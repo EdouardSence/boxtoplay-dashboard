@@ -34,6 +34,24 @@ export interface ModpackVersion {
   minecraftVersion: string | null
 }
 
+const toSafeImageUrl = (value: string | null | undefined): string | null => {
+  if (!value) {
+    return null
+  }
+
+  try {
+    const parsed = new URL(value)
+
+    if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
+      return null
+    }
+
+    return parsed.toString()
+  } catch {
+    return null
+  }
+}
+
 export const searchModpacks = createServerFn({ method: 'GET' })
   .validator((data: { query: string }) => data)
   .handler(async ({ data }): Promise<ModpackSummary[]> => {
@@ -59,7 +77,7 @@ export const searchModpacks = createServerFn({ method: 'GET' })
     return list.map((modpack) => ({
       id: modpack.id,
       name: modpack.name,
-      logo: modpack.logo ?? null,
+      logo: toSafeImageUrl(modpack.logo),
     }))
   })
 

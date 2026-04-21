@@ -75,7 +75,7 @@ function ModpacksPage() {
     },
   })
 
-  const canInstall = !!selectedModpackId && !!selectedVersionId && !installMutation.isPending
+  const canDispatchWorkflow = !!selectedModpackId && !!selectedVersionId && !installMutation.isPending
 
   const onSelectModpack = (id: string, name: string) => {
     setSelectedModpackId(id)
@@ -177,7 +177,7 @@ function ModpacksPage() {
                   ))}
                 </select>
 
-                <Button disabled={!canInstall} onClick={() => installMutation.mutate()}>
+                <Button disabled={!canDispatchWorkflow} onClick={() => installMutation.mutate()}>
                   {installMutation.isPending ? (
                     <span className="inline-flex items-center gap-2">
                       <span className="h-4 w-4 animate-spin rounded-full border-2 border-zinc-100 border-t-transparent" />
