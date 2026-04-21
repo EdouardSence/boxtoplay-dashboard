@@ -1,18 +1,31 @@
 import { createServerFn } from '@tanstack/react-start'
 
 interface BoxToPlayModpackApi {
-  id: string
+  id: string | number
   name: string
   logo?: string | null
 }
 
+interface BoxToPlayCurseCategoryApi {
+  id: number
+  name: string
+  iconUrl?: string | null
+}
+
+interface BoxToPlayCurseCategoryCountApi {
+  curseModCategory?: BoxToPlayCurseCategoryApi
+  count?: number
+}
+
 interface BoxToPlayModpackSearchResponse {
+  curseMods?: BoxToPlayModpackApi[]
   modpacks?: BoxToPlayModpackApi[]
   data?: BoxToPlayModpackApi[]
+  count?: number
 }
 
 interface BoxToPlayModpackVersionApi {
-  id: string
+  id: string | number
   version_name: string
   minecraft_version?: string | null
 }
@@ -28,6 +41,20 @@ export interface ModpackSummary {
   logo: string | null
 }
 
+export interface ModpackSearchResult {
+  modpacks: ModpackSummary[]
+  totalCount: number
+  pageId: number
+  pageSize: number
+}
+
+export interface ModpackCategory {
+  id: string
+  name: string
+  icon: string | null
+  count: number
+}
+
 export interface ModpackVersion {
   id: string
   versionName: string
@@ -38,6 +65,31 @@ const REQUEST_TIMEOUT_MS = 10_000
 const MAX_QUERY_LENGTH = 80
 const MAX_MODPACK_NAME_LENGTH = 120
 const SAFE_ID_PATTERN = /^[A-Za-z0-9._:-]+$/
+const SAFE_NUMERIC_ID_PATTERN = /^\d+$/
+const DEFAULT_BOXTOPLAY_SERVER_ID = '951457'
+const MODPACK_SEARCH_PAGE_SIZE = 10
+const FALLBACK_MODPACK_CATEGORIES: ModpackCategory[] = [
+  { id: '0', name: 'All', icon: 'https://www.boxtoplay.com/assets/backend/modpacks/icons/allcategories.png', count: 3094 },
+  { id: '1', name: 'Tech', icon: 'https://media.forgecdn.net/avatars/14/479/635596761534662757.png', count: 1737 },
+  { id: '2', name: 'Magic', icon: 'https://media.forgecdn.net/avatars/14/474/635596760578719019.png', count: 1279 },
+  { id: '3', name: 'Quests', icon: 'https://media.forgecdn.net/avatars/14/487/635596816137981263.png', count: 1203 },
+  { id: '4', name: 'Exploration', icon: 'https://media.forgecdn.net/avatars/14/486/635596815896417213.png', count: 2128 },
+  { id: '5', name: 'Extra Large', icon: 'https://media.forgecdn.net/avatars/14/472/635596760403562826.png', count: 503 },
+  { id: '6', name: 'Adventure and RPG', icon: 'https://media.forgecdn.net/avatars/14/480/635596775049811800.png', count: 1818 },
+  { id: '7', name: 'Map Based', icon: 'https://media.forgecdn.net/avatars/14/475/635596760683250342.png', count: 92 },
+  { id: '8', name: 'Hardcore', icon: 'https://media.forgecdn.net/avatars/14/473/635596760504656528.png', count: 319 },
+  { id: '9', name: 'Combat / PvP', icon: 'https://media.forgecdn.net/avatars/14/313/635591779575605594.png', count: 657 },
+  { id: '10', name: 'Multiplayer', icon: 'https://media.forgecdn.net/avatars/14/481/635596792838491141.png', count: 1491 },
+  { id: '11', name: 'Vanilla+', icon: 'https://media.forgecdn.net/avatars/451/388/637713564446392425.png', count: 638 },
+  { id: '12', name: 'Skyblock', icon: 'https://media.forgecdn.net/avatars/162/818/636678840408956323.png', count: 254 },
+  { id: '13', name: 'Small / Light', icon: 'https://media.forgecdn.net/avatars/14/478/635596761449660932.png', count: 489 },
+  { id: '14', name: 'FTB Official Pack', icon: 'https://media.forgecdn.net/avatars/15/166/635616941825349689.png', count: 51 },
+  { id: '15', name: 'Sci-Fi', icon: 'https://media.forgecdn.net/avatars/14/323/635591780581068715.png', count: 79 },
+  { id: '16', name: 'Mini Game', icon: 'https://media.forgecdn.net/avatars/15/517/635627406184649114.png', count: 40 },
+  { id: '17', name: 'Horror', icon: 'https://media.forgecdn.net/avatars/1062/213/638594627103104125.png', count: 108 },
+  { id: '18', name: 'Expert', icon: 'https://media.forgecdn.net/avatars/1585/295/639026019554106289.png', count: 30 },
+  { id: '19', name: 'RLCraft', icon: 'https://media.forgecdn.net/avatars/1729/298/639100433200568522.png', count: 1 },
+]
 
 const fetchWithTimeout = (url: string, init?: RequestInit) => {
   const controller = new AbortController()
@@ -57,9 +109,9 @@ const toSafeImageUrl = (value: string | null | undefined): string | null => {
   }
 
   try {
-    const parsed = new URL(value)
+    const parsed = new URL(value, 'https://www.boxtoplay.com')
 
-    if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
+    if (parsed.protocol !== 'https:') {
       return null
     }
 
@@ -71,20 +123,86 @@ const toSafeImageUrl = (value: string | null | undefined): string | null => {
 
 const isSafeText = (value: string) => !/[\x00-\x1F\x7F]/.test(value)
 
+const getBoxToPlayServerId = () => {
+  const serverId = (process.env.BOXTOPLAY_SERVER_ID ?? DEFAULT_BOXTOPLAY_SERVER_ID).trim()
+
+  if (!SAFE_NUMERIC_ID_PATTERN.test(serverId)) {
+    throw new Error('BOXTOPLAY_SERVER_ID must be numeric')
+  }
+
+  return serverId
+}
+
+export const getModpackCategories = createServerFn({ method: 'GET' }).handler(async (): Promise<ModpackCategory[]> => {
+  const serverId = getBoxToPlayServerId()
+
+  const response = await fetchWithTimeout(`https://www.boxtoplay.com/minecraft/modpacks/cursemodpacks/categories/${encodeURIComponent(serverId)}`, {
+    headers: {
+      accept: 'application/json',
+    },
+  })
+
+  if (!response.ok) {
+    return FALLBACK_MODPACK_CATEGORIES
+  }
+
+  const payload = (await response.json()) as BoxToPlayCurseCategoryCountApi[]
+
+  const categories = payload
+    .filter((entry) => {
+      const category = entry.curseModCategory
+
+      return !!category && SAFE_NUMERIC_ID_PATTERN.test(String(category.id)) && isSafeText(category.name)
+    })
+    .map((entry) => {
+      const category = entry.curseModCategory as BoxToPlayCurseCategoryApi
+
+      return {
+        id: String(category.id),
+        name: category.name,
+        icon: toSafeImageUrl(category.iconUrl),
+        count: typeof entry.count === 'number' && Number.isFinite(entry.count) ? entry.count : 0,
+      }
+    })
+
+  return categories.length > 0 ? categories : FALLBACK_MODPACK_CATEGORIES
+})
+
 export const searchModpacks = createServerFn({ method: 'GET' })
-  .handler(async ({ data }): Promise<ModpackSummary[]> => {
-    const input = data as { query?: string } | undefined
+  .handler(async ({ data }): Promise<ModpackSearchResult> => {
+    const input = data as { query?: string; pageId?: number; categoryId?: string } | undefined
     const query = (input?.query ?? '').trim()
+    const pageId = Number.isInteger(input?.pageId) && (input?.pageId ?? 0) >= 0 ? (input?.pageId ?? 0) : 0
+    const categoryId = (input?.categoryId ?? '0').trim()
+    const serverId = getBoxToPlayServerId()
 
     if (!query) {
-      return []
+      return {
+        modpacks: [],
+        totalCount: 0,
+        pageId,
+        pageSize: MODPACK_SEARCH_PAGE_SIZE,
+      }
     }
 
     if (query.length > MAX_QUERY_LENGTH || !isSafeText(query)) {
       throw new Error('Invalid modpack search query')
     }
 
-    const response = await fetchWithTimeout(`https://api.boxtoplay.com/v1/modpacks/search?q=${encodeURIComponent(query)}`, {
+    if (!SAFE_NUMERIC_ID_PATTERN.test(categoryId)) {
+      throw new Error('Invalid modpack category id')
+    }
+
+    const searchParams = new URLSearchParams({
+      search: query,
+      pageId: String(pageId),
+    })
+
+    if (categoryId !== '0') {
+      searchParams.set('categoryId', categoryId)
+    }
+
+    const response = await fetchWithTimeout(`https://www.boxtoplay.com/minecraft/modpacks/cursemodpacks/search/${encodeURIComponent(serverId)}?${searchParams.toString()}`, {
       headers: {
         accept: 'application/json',
       },
@@ -95,20 +213,32 @@ export const searchModpacks = createServerFn({ method: 'GET' })
     }
 
     const payload = (await response.json()) as BoxToPlayModpackSearchResponse | BoxToPlayModpackApi[]
-    const list = Array.isArray(payload) ? payload : payload.modpacks ?? payload.data ?? []
+    const totalCount = Array.isArray(payload)
+      ? payload.length
+      : typeof payload.count === 'number' && Number.isFinite(payload.count)
+        ? payload.count
+        : 0
+    const list = Array.isArray(payload) ? payload : payload.curseMods ?? payload.modpacks ?? payload.data ?? []
 
-    return list
+    const modpacks = list
       .filter(
         (modpack) =>
-          SAFE_ID_PATTERN.test(modpack.id) &&
+          SAFE_ID_PATTERN.test(String(modpack.id)) &&
           isSafeText(modpack.name) &&
           modpack.name.length <= MAX_MODPACK_NAME_LENGTH,
       )
       .map((modpack) => ({
-        id: modpack.id,
+        id: String(modpack.id),
         name: modpack.name,
         logo: toSafeImageUrl(modpack.logo),
       }))
+
+    return {
+      modpacks,
+      totalCount: totalCount || modpacks.length,
+      pageId,
+      pageSize: MODPACK_SEARCH_PAGE_SIZE,
+    }
   })
 
 export const getModpackVersions = createServerFn({ method: 'GET' })
@@ -141,10 +271,10 @@ export const getModpackVersions = createServerFn({ method: 'GET' })
       .filter((version) => {
         const minecraftVersion = version.minecraft_version ?? ''
 
-        return SAFE_ID_PATTERN.test(version.id) && isSafeText(version.version_name) && isSafeText(minecraftVersion)
+        return SAFE_ID_PATTERN.test(String(version.id)) && isSafeText(version.version_name) && isSafeText(minecraftVersion)
       })
       .map((version) => ({
-        id: version.id,
+        id: String(version.id),
         versionName: version.version_name,
         minecraftVersion: version.minecraft_version ?? null,
       }))
