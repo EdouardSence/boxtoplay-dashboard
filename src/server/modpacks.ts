@@ -35,6 +35,23 @@ interface BoxToPlayModpackVersionsResponse {
   data?: BoxToPlayModpackVersionApi[]
 }
 
+interface GitHubGistFileApi {
+  content?: string | null
+}
+
+interface GitHubGistApiResponse {
+  files?: Record<string, GitHubGistFileApi>
+}
+
+interface BoxToPlayStateAccount {
+  cookies?: Record<string, string | undefined> | null
+}
+
+interface BoxToPlayGistState {
+  active_account_index?: number
+  accounts?: BoxToPlayStateAccount[]
+}
+
 export interface ModpackSummary {
   id: string
   name: string
@@ -68,6 +85,10 @@ const SAFE_ID_PATTERN = /^[A-Za-z0-9._:-]+$/
 const SAFE_NUMERIC_ID_PATTERN = /^\d+$/
 const DEFAULT_BOXTOPLAY_SERVER_ID = '951457'
 const MODPACK_SEARCH_PAGE_SIZE = 10
+const BOXTOPLAY_SESSION_COOKIE_KEY = 'BOXTOPLAY_SESSION'
+const BOXTOPLAY_REFERER = 'https://www.boxtoplay.com/minecraft/modpacks'
+const BOXTOPLAY_USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'
+const COOKIE_CACHE_TTL_MS = 60_000
 const FALLBACK_MODPACK_CATEGORIES: ModpackCategory[] = [
   { id: '0', name: 'All', icon: 'https://www.boxtoplay.com/assets/backend/modpacks/icons/allcategories.png', count: 3094 },
   { id: '1', name: 'Tech', icon: 'https://media.forgecdn.net/avatars/14/479/635596761534662757.png', count: 1737 },
@@ -90,6 +111,8 @@ const FALLBACK_MODPACK_CATEGORIES: ModpackCategory[] = [
   { id: '18', name: 'Expert', icon: 'https://media.forgecdn.net/avatars/1585/295/639026019554106289.png', count: 30 },
   { id: '19', name: 'RLCraft', icon: 'https://media.forgecdn.net/avatars/1729/298/639100433200568522.png', count: 1 },
 ]
+
+let cachedCookieHeader: { value: string; expiresAt: number } | null = null
 
 const fetchWithTimeout = (url: string, init?: RequestInit) => {
   const controller = new AbortController()
@@ -123,6 +146,139 @@ const toSafeImageUrl = (value: string | null | undefined): string | null => {
 
 const isSafeText = (value: string) => !/[\x00-\x1F\x7F]/.test(value)
 
+const toCookieHeader = (value: string | null | undefined): string | null => {
+  if (!value) {
+    return null
+  }
+
+  const trimmed = value.trim()
+
+  if (!trimmed || !isSafeText(trimmed)) {
+    return null
+  }
+
+  if (trimmed.includes('=')) {
+    return trimmed
+  }
+
+  return `${BOXTOPLAY_SESSION_COOKIE_KEY}=${trimmed}`
+}
+
+const getActiveCookieFromState = (state: BoxToPlayGistState): string | null => {
+  const accounts = Array.isArray(state.accounts) ? state.accounts : []
+
+  if (accounts.length === 0) {
+    return null
+  }
+
+  const activeIndex =
+    Number.isInteger(state.active_account_index) &&
+    (state.active_account_index ?? -1) >= 0 &&
+    (state.active_account_index ?? -1) < accounts.length
+      ? (state.active_account_index as number)
+      : 0
+
+  const activeCookie = toCookieHeader(accounts[activeIndex]?.cookies?.[BOXTOPLAY_SESSION_COOKIE_KEY])
+
+  if (activeCookie) {
+    return activeCookie
+  }
+
+  for (const account of accounts) {
+    const fallbackCookie = toCookieHeader(account?.cookies?.[BOXTOPLAY_SESSION_COOKIE_KEY])
+
+    if (fallbackCookie) {
+      return fallbackCookie
+    }
+  }
+
+  return null
+}
+
+const loadBoxToPlayCookieHeaderFromGist = async (): Promise<string> => {
+  const token = process.env.GH_TOKEN
+  const gistId = process.env.GIST_ID
+
+  if (!token || !gistId) {
+    throw new Error('Missing Gist configuration (GH_TOKEN or GIST_ID)')
+  }
+
+  const response = await fetchWithTimeout(`https://api.github.com/gists/${encodeURIComponent(gistId)}`, {
+    headers: {
+      accept: 'application/vnd.github+json',
+      authorization: `Bearer ${token}`,
+      'x-github-api-version': '2022-11-28',
+    },
+  })
+
+  if (!response.ok) {
+    throw new Error('Failed to load BoxToPlay cookies from Gist')
+  }
+
+  const payload = (await response.json()) as GitHubGistApiResponse
+  const files = payload.files ?? {}
+
+  for (const file of Object.values(files)) {
+    if (typeof file.content !== 'string' || file.content.trim().length === 0) {
+      continue
+    }
+
+    try {
+      const state = JSON.parse(file.content) as BoxToPlayGistState
+      const cookieHeader = getActiveCookieFromState(state)
+
+      if (cookieHeader) {
+        return cookieHeader
+      }
+    } catch {
+      // ignore non-JSON gist files and try next
+    }
+  }
+
+  throw new Error('No usable BoxToPlay session cookie found in Gist state')
+}
+
+const getBoxToPlayCookieHeader = async (): Promise<string> => {
+  if (cachedCookieHeader && cachedCookieHeader.expiresAt > Date.now()) {
+    return cachedCookieHeader.value
+  }
+
+  const value = await loadBoxToPlayCookieHeaderFromGist()
+
+  cachedCookieHeader = {
+    value,
+    expiresAt: Date.now() + COOKIE_CACHE_TTL_MS,
+  }
+
+  return value
+}
+
+const getBoxToPlayRequestHeaders = (cookieHeader: string): HeadersInit => ({
+  accept: 'application/json, text/plain, */*',
+  'accept-language': 'fr-FR,fr;q=0.9,en;q=0.8',
+  cookie: cookieHeader,
+  referer: BOXTOPLAY_REFERER,
+  'user-agent': BOXTOPLAY_USER_AGENT,
+  'x-requested-with': 'XMLHttpRequest',
+})
+
+const fetchBoxToPlayWithAuth = async (url: string): Promise<Response> => {
+  const cachedCookie = await getBoxToPlayCookieHeader()
+  let response = await fetchWithTimeout(url, {
+    headers: getBoxToPlayRequestHeaders(cachedCookie),
+  })
+
+  if (response.status === 401 || response.status === 403) {
+    cachedCookieHeader = null
+    const freshCookie = await getBoxToPlayCookieHeader()
+    response = await fetchWithTimeout(url, {
+      headers: getBoxToPlayRequestHeaders(freshCookie),
+    })
+  }
+
+  return response
+}
+
 const getBoxToPlayServerId = () => {
   const serverId = (process.env.BOXTOPLAY_SERVER_ID ?? DEFAULT_BOXTOPLAY_SERVER_ID).trim()
 
@@ -136,11 +292,9 @@ const getBoxToPlayServerId = () => {
 export const getModpackCategories = createServerFn({ method: 'GET' }).handler(async (): Promise<ModpackCategory[]> => {
   const serverId = getBoxToPlayServerId()
 
-  const response = await fetchWithTimeout(`https://www.boxtoplay.com/minecraft/modpacks/cursemodpacks/categories/${encodeURIComponent(serverId)}`, {
-    headers: {
-      accept: 'application/json',
-    },
-  })
+  const response = await fetchBoxToPlayWithAuth(
+    `https://www.boxtoplay.com/minecraft/modpacks/cursemodpacks/categories/${encodeURIComponent(serverId)}`,
+  )
 
   if (!response.ok) {
     return FALLBACK_MODPACK_CATEGORIES
@@ -202,11 +356,9 @@ export const searchModpacks = createServerFn({ method: 'GET' })
       searchParams.set('categoryId', categoryId)
     }
 
-    const response = await fetchWithTimeout(`https://www.boxtoplay.com/minecraft/modpacks/cursemodpacks/search/${encodeURIComponent(serverId)}?${searchParams.toString()}`, {
-      headers: {
-        accept: 'application/json',
-      },
-    })
+    const response = await fetchBoxToPlayWithAuth(
+      `https://www.boxtoplay.com/minecraft/modpacks/cursemodpacks/search/${encodeURIComponent(serverId)}?${searchParams.toString()}`,
+    )
 
     if (!response.ok) {
       throw new Error('Failed to search modpacks')
