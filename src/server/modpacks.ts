@@ -35,6 +35,9 @@ export interface ModpackVersion {
 }
 
 const REQUEST_TIMEOUT_MS = 10_000
+const MAX_QUERY_LENGTH = 80
+const MAX_MODPACK_NAME_LENGTH = 120
+const SAFE_ID_PATTERN = /^[A-Za-z0-9._:-]+$/
 
 const fetchWithTimeout = (url: string, init?: RequestInit) => {
   const controller = new AbortController()
@@ -66,6 +69,8 @@ const toSafeImageUrl = (value: string | null | undefined): string | null => {
   }
 }
 
+const isSafeText = (value: string) => !/[\x00-\x1F\x7F]/.test(value)
+
 export const searchModpacks = createServerFn({ method: 'GET' })
   .validator((data: { query: string }) => data)
   .handler(async ({ data }): Promise<ModpackSummary[]> => {
@@ -73,6 +78,10 @@ export const searchModpacks = createServerFn({ method: 'GET' })
 
     if (!query) {
       return []
+    }
+
+    if (query.length > MAX_QUERY_LENGTH || !isSafeText(query)) {
+      throw new Error('Invalid modpack search query')
     }
 
     const response = await fetchWithTimeout(`https://api.boxtoplay.com/v1/modpacks/search?q=${encodeURIComponent(query)}`, {
@@ -102,6 +111,10 @@ export const getModpackVersions = createServerFn({ method: 'GET' })
 
     if (!packId) {
       return []
+    }
+
+    if (!SAFE_ID_PATTERN.test(packId)) {
+      throw new Error('Invalid modpack id')
     }
 
     const response = await fetchWithTimeout(`https://api.boxtoplay.com/v1/modpacks/${encodeURIComponent(packId)}/versions`, {
@@ -140,6 +153,17 @@ export const triggerModpackSwitch = createServerFn({ method: 'POST' })
       throw new Error('GITHUB_REPO must be in the format owner/repo')
     }
 
+    const modpackName = data.modpackName.trim()
+    const modpackVersionId = data.modpackVersionId.trim()
+
+    if (!modpackName || modpackName.length > MAX_MODPACK_NAME_LENGTH || !isSafeText(modpackName)) {
+      throw new Error('Invalid modpack name')
+    }
+
+    if (!SAFE_ID_PATTERN.test(modpackVersionId)) {
+      throw new Error('Invalid modpack version id')
+    }
+
     const response = await fetchWithTimeout(`https://api.github.com/repos/${owner}/${repo}/actions/workflows/change_modpack.yml/dispatches`, {
       method: 'POST',
       headers: {
@@ -149,8 +173,8 @@ export const triggerModpackSwitch = createServerFn({ method: 'POST' })
       body: JSON.stringify({
         ref: 'main',
         inputs: {
-          modpack_name: data.modpackName,
-          modpack_id: data.modpackVersionId,
+          modpack_name: modpackName,
+          modpack_id: modpackVersionId,
         },
       }),
     })
