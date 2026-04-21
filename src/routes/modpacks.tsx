@@ -110,7 +110,7 @@ function ModpacksPage() {
             {searchQuery.isPending ? (
               <p className="text-sm text-zinc-400">Searching modpacks...</p>
             ) : searchQuery.isError ? (
-              <p className="text-sm text-rose-300">Unable to search modpacks right now.</p>
+              <p className="text-sm text-rose-300">Failed to search modpacks. Please try again in a moment.</p>
             ) : searchQuery.data.length === 0 ? (
               <p className="text-sm text-zinc-400">No modpacks found.</p>
             ) : (
@@ -158,7 +158,7 @@ function ModpacksPage() {
             {versionsQuery.isPending ? (
               <p className="text-sm text-zinc-400">Loading versions...</p>
             ) : versionsQuery.isError ? (
-              <p className="text-sm text-rose-300">Unable to load modpack versions.</p>
+              <p className="text-sm text-rose-300">Failed to load versions. Please reselect the modpack and retry.</p>
             ) : versionsQuery.data.length === 0 ? (
               <p className="text-sm text-zinc-400">No versions available for this modpack.</p>
             ) : (
@@ -189,7 +189,7 @@ function ModpacksPage() {
                 </Button>
 
                 {installMutation.isError && (
-                  <p className="text-sm text-rose-300">Failed to dispatch workflow. Check GitHub configuration.</p>
+                  <p className="text-sm text-rose-300">Failed to start installation. Please retry or contact support.</p>
                 )}
               </>
             )}

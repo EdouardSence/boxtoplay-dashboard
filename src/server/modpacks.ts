@@ -97,11 +97,13 @@ export const searchModpacks = createServerFn({ method: 'GET' })
     const payload = (await response.json()) as BoxToPlayModpackSearchResponse | BoxToPlayModpackApi[]
     const list = Array.isArray(payload) ? payload : payload.modpacks ?? payload.data ?? []
 
-    return list.map((modpack) => ({
-      id: modpack.id,
-      name: modpack.name,
-      logo: toSafeImageUrl(modpack.logo),
-    }))
+    return list
+      .filter((modpack) => SAFE_ID_PATTERN.test(modpack.id) && isSafeText(modpack.name))
+      .map((modpack) => ({
+        id: modpack.id,
+        name: modpack.name,
+        logo: toSafeImageUrl(modpack.logo),
+      }))
   })
 
 export const getModpackVersions = createServerFn({ method: 'GET' })
@@ -130,11 +132,17 @@ export const getModpackVersions = createServerFn({ method: 'GET' })
     const payload = (await response.json()) as BoxToPlayModpackVersionsResponse | BoxToPlayModpackVersionApi[]
     const list = Array.isArray(payload) ? payload : payload.versions ?? payload.data ?? []
 
-    return list.map((version) => ({
-      id: version.id,
-      versionName: version.version_name,
-      minecraftVersion: version.minecraft_version ?? null,
-    }))
+    return list
+      .filter((version) => {
+        const minecraftVersion = version.minecraft_version ?? ''
+
+        return SAFE_ID_PATTERN.test(version.id) && isSafeText(version.version_name) && isSafeText(minecraftVersion)
+      })
+      .map((version) => ({
+        id: version.id,
+        versionName: version.version_name,
+        minecraftVersion: version.minecraft_version ?? null,
+      }))
   })
 
 export const triggerModpackSwitch = createServerFn({ method: 'POST' })
