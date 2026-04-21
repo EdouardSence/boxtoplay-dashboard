@@ -42,7 +42,7 @@ export interface WorkflowRun {
 }
 
 export const getMinecraftStatus = createServerFn({ method: 'GET' }).handler(async (): Promise<MinecraftStatus> => {
-  const response = await fetch('https://api.mcsrvstat.us/3/mc319.boxtoplay.com', {
+  const response = await fetch('https://api.mcsrvstat.us/3/orny.boxtoplay.com', {
     headers: {
       accept: 'application/json',
     },
