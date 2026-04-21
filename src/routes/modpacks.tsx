@@ -198,7 +198,11 @@ function ModpacksPage() {
       )}
 
       {toastMessage && (
-        <div className="fixed right-6 top-6 z-50 rounded-md border border-emerald-500/30 bg-emerald-950/90 px-4 py-3 text-sm text-emerald-100 shadow-lg">
+        <div
+          role="status"
+          aria-live="polite"
+          className="fixed right-6 top-6 z-50 rounded-md border border-emerald-500/30 bg-emerald-950/90 px-4 py-3 text-sm text-emerald-100 shadow-lg"
+        >
           {toastMessage}
         </div>
       )}

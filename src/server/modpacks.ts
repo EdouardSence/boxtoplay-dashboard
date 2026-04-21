@@ -34,6 +34,20 @@ export interface ModpackVersion {
   minecraftVersion: string | null
 }
 
+const REQUEST_TIMEOUT_MS = 10_000
+
+const fetchWithTimeout = (url: string, init?: RequestInit) => {
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
+
+  return fetch(url, {
+    ...init,
+    signal: controller.signal,
+  }).finally(() => {
+    clearTimeout(timeout)
+  })
+}
+
 const toSafeImageUrl = (value: string | null | undefined): string | null => {
   if (!value) {
     return null
@@ -61,7 +75,7 @@ export const searchModpacks = createServerFn({ method: 'GET' })
       return []
     }
 
-    const response = await fetch(`https://api.boxtoplay.com/v1/modpacks/search?q=${encodeURIComponent(query)}`, {
+    const response = await fetchWithTimeout(`https://api.boxtoplay.com/v1/modpacks/search?q=${encodeURIComponent(query)}`, {
       headers: {
         accept: 'application/json',
       },
@@ -90,7 +104,7 @@ export const getModpackVersions = createServerFn({ method: 'GET' })
       return []
     }
 
-    const response = await fetch(`https://api.boxtoplay.com/v1/modpacks/${encodeURIComponent(packId)}/versions`, {
+    const response = await fetchWithTimeout(`https://api.boxtoplay.com/v1/modpacks/${encodeURIComponent(packId)}/versions`, {
       headers: {
         accept: 'application/json',
       },
@@ -126,7 +140,7 @@ export const triggerModpackSwitch = createServerFn({ method: 'POST' })
       throw new Error('GITHUB_REPO must be in the format owner/repo')
     }
 
-    const response = await fetch(`https://api.github.com/repos/${owner}/${repo}/actions/workflows/change_modpack.yml/dispatches`, {
+    const response = await fetchWithTimeout(`https://api.github.com/repos/${owner}/${repo}/actions/workflows/change_modpack.yml/dispatches`, {
       method: 'POST',
       headers: {
         authorization: `Bearer ${token}`,
