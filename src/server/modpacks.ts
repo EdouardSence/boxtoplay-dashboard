@@ -98,7 +98,12 @@ export const searchModpacks = createServerFn({ method: 'GET' })
     const list = Array.isArray(payload) ? payload : payload.modpacks ?? payload.data ?? []
 
     return list
-      .filter((modpack) => SAFE_ID_PATTERN.test(modpack.id) && isSafeText(modpack.name))
+      .filter(
+        (modpack) =>
+          SAFE_ID_PATTERN.test(modpack.id) &&
+          isSafeText(modpack.name) &&
+          modpack.name.length <= MAX_MODPACK_NAME_LENGTH,
+      )
       .map((modpack) => ({
         id: modpack.id,
         name: modpack.name,

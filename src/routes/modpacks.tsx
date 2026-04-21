@@ -177,7 +177,11 @@ function ModpacksPage() {
                   ))}
                 </select>
 
-                <Button disabled={!canDispatchWorkflow} onClick={() => installMutation.mutate()}>
+                <Button
+                  disabled={!canDispatchWorkflow}
+                  aria-label="Install on Server. Requires a selected modpack version."
+                  onClick={() => installMutation.mutate()}
+                >
                   {installMutation.isPending ? (
                     <span className="inline-flex items-center gap-2">
                       <span className="h-4 w-4 animate-spin rounded-full border-2 border-zinc-100 border-t-transparent" />
