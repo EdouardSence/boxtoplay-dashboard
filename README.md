@@ -1,4 +1,4 @@
-Welcome to your new TanStack Start app! 
+# BoxToPlay Control Center
 
 # Getting Started
 
@@ -33,10 +33,10 @@ This project uses [Tailwind CSS](https://tailwindcss.com/) for styling.
 
 If you prefer not to use Tailwind CSS:
 
-1. Remove the demo pages in `src/routes/demo/`
+1. Remove the application routes you no longer need (for example `src/routes/modpacks.tsx` and `src/routes/backups.tsx`)
 2. Replace the Tailwind import in `src/styles.css` with your own styles
 3. Remove `tailwindcss()` from the plugins array in `vite.config.ts`
-4. Uninstall the packages: `npm install @tailwindcss/vite tailwindcss -D`
+4. Uninstall the packages: `npm uninstall @tailwindcss/vite tailwindcss`
 
 
 
@@ -181,10 +181,6 @@ function PeopleComponent() {
 ```
 
 Loaders simplify your data fetching logic dramatically. Check out more information in the [Loader documentation](https://tanstack.com/router/latest/docs/framework/react/guide/data-loading#loader-parameters).
-
-# Demo files
-
-Files prefixed with `demo` can be safely deleted. They are there to provide a starting point for you to play around with the features you've installed.
 
 # Learn More
 

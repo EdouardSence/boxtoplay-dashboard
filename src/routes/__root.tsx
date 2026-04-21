@@ -65,7 +65,7 @@ function RootDocument() {
           }}
           plugins={[
             {
-              name: 'Tanstack Router',
+              name: 'TanStack Router',
               render: <TanStackRouterDevtoolsPanel />,
             },
           ]}
