@@ -72,9 +72,9 @@ const toSafeImageUrl = (value: string | null | undefined): string | null => {
 const isSafeText = (value: string) => !/[\x00-\x1F\x7F]/.test(value)
 
 export const searchModpacks = createServerFn({ method: 'GET' })
-  .validator((data: { query: string }) => data)
   .handler(async ({ data }): Promise<ModpackSummary[]> => {
-    const query = data.query.trim()
+    const input = data as { query?: string } | undefined
+    const query = (input?.query ?? '').trim()
 
     if (!query) {
       return []
@@ -112,9 +112,9 @@ export const searchModpacks = createServerFn({ method: 'GET' })
   })
 
 export const getModpackVersions = createServerFn({ method: 'GET' })
-  .validator((data: { packId: string }) => data)
   .handler(async ({ data }): Promise<ModpackVersion[]> => {
-    const packId = data.packId.trim()
+    const input = data as { packId?: string } | undefined
+    const packId = (input?.packId ?? '').trim()
 
     if (!packId) {
       return []
@@ -151,7 +151,6 @@ export const getModpackVersions = createServerFn({ method: 'GET' })
   })
 
 export const triggerModpackSwitch = createServerFn({ method: 'POST' })
-  .validator((data: { modpackName: string; modpackVersionId: string }) => data)
   .handler(async ({ data }): Promise<void> => {
     const token = process.env.GH_TOKEN
     const repository = process.env.GITHUB_REPO
@@ -166,8 +165,9 @@ export const triggerModpackSwitch = createServerFn({ method: 'POST' })
       throw new Error('GITHUB_REPO must be in the format owner/repo')
     }
 
-    const modpackName = data.modpackName.trim()
-    const modpackVersionId = data.modpackVersionId.trim()
+    const input = data as { modpackName?: string; modpackVersionId?: string } | undefined
+    const modpackName = (input?.modpackName ?? '').trim()
+    const modpackVersionId = (input?.modpackVersionId ?? '').trim()
 
     if (!modpackName || modpackName.length > MAX_MODPACK_NAME_LENGTH || !isSafeText(modpackName)) {
       throw new Error('Invalid modpack name')
