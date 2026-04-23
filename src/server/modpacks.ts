@@ -114,6 +114,22 @@ const FALLBACK_MODPACK_CATEGORIES: ModpackCategory[] = [
 
 let cachedCookieHeader: { value: string; expiresAt: number } | null = null
 
+const logModpacks = (level: 'info' | 'warn' | 'error', message: string, details?: Record<string, unknown>) => {
+  const payload = details ? { message, ...details } : { message }
+
+  if (level === 'error') {
+    console.error('[modpacks]', payload)
+    return
+  }
+
+  if (level === 'warn') {
+    console.warn('[modpacks]', payload)
+    return
+  }
+
+  console.info('[modpacks]', payload)
+}
+
 const fetchWithTimeout = (url: string, init?: RequestInit) => {
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
@@ -200,6 +216,10 @@ const loadBoxToPlayCookieHeaderFromGist = async (): Promise<string> => {
   const gistId = process.env.GIST_ID
 
   if (!token || !gistId) {
+    logModpacks('error', 'Missing Gist configuration for BoxToPlay auth', {
+      hasGhToken: Boolean(token),
+      hasGistId: Boolean(gistId),
+    })
     throw new Error('Missing Gist configuration (GH_TOKEN or GIST_ID)')
   }
 
@@ -212,6 +232,10 @@ const loadBoxToPlayCookieHeaderFromGist = async (): Promise<string> => {
   })
 
   if (!response.ok) {
+    logModpacks('error', 'Failed to load Gist for BoxToPlay cookie', {
+      status: response.status,
+      statusText: response.statusText,
+    })
     throw new Error('Failed to load BoxToPlay cookies from Gist')
   }
 
@@ -235,6 +259,7 @@ const loadBoxToPlayCookieHeaderFromGist = async (): Promise<string> => {
     }
   }
 
+  logModpacks('error', 'No usable BoxToPlay cookie found in Gist payload')
   throw new Error('No usable BoxToPlay session cookie found in Gist state')
 }
 
@@ -269,11 +294,22 @@ const fetchBoxToPlayWithAuth = async (url: string): Promise<Response> => {
   })
 
   if (response.status === 401 || response.status === 403) {
+    logModpacks('warn', 'BoxToPlay auth rejected, retrying with refreshed cookie', {
+      status: response.status,
+      endpoint: url,
+    })
     cachedCookieHeader = null
     const freshCookie = await getBoxToPlayCookieHeader()
     response = await fetchWithTimeout(url, {
       headers: getBoxToPlayRequestHeaders(freshCookie),
     })
+
+    if (response.status === 401 || response.status === 403) {
+      logModpacks('error', 'BoxToPlay auth failed after retry', {
+        status: response.status,
+        endpoint: url,
+      })
+    }
   }
 
   return response
@@ -297,6 +333,11 @@ export const getModpackCategories = createServerFn({ method: 'GET' }).handler(as
   )
 
   if (!response.ok) {
+    logModpacks('warn', 'Categories endpoint unavailable, using fallback categories', {
+      status: response.status,
+      statusText: response.statusText,
+      serverId,
+    })
     return FALLBACK_MODPACK_CATEGORIES
   }
 
@@ -361,6 +402,14 @@ export const searchModpacks = createServerFn({ method: 'GET' })
     )
 
     if (!response.ok) {
+      logModpacks('error', 'Modpack search request failed', {
+        status: response.status,
+        statusText: response.statusText,
+        pageId,
+        categoryId,
+        queryLength: query.length,
+        serverId,
+      })
       throw new Error('Failed to search modpacks')
     }
 
