@@ -45,10 +45,12 @@ interface GitHubGistApiResponse {
 
 interface BoxToPlayStateAccount {
   cookies?: Record<string, string | undefined> | null
+  server_id?: string | number | null
 }
 
 interface BoxToPlayGistState {
   active_account_index?: number
+  current_server_id?: string | number | null
   accounts?: BoxToPlayStateAccount[]
 }
 
@@ -83,7 +85,6 @@ const MAX_QUERY_LENGTH = 80
 const MAX_MODPACK_NAME_LENGTH = 120
 const SAFE_ID_PATTERN = /^[A-Za-z0-9._:-]+$/
 const SAFE_NUMERIC_ID_PATTERN = /^\d+$/
-const DEFAULT_BOXTOPLAY_SERVER_ID = '951457'
 const MODPACK_SEARCH_PAGE_SIZE = 10
 const BOXTOPLAY_SESSION_COOKIE_KEY = 'BOXTOPLAY_SESSION'
 const BOXTOPLAY_REFERER = 'https://www.boxtoplay.com/minecraft/modpacks'
@@ -112,7 +113,7 @@ const FALLBACK_MODPACK_CATEGORIES: ModpackCategory[] = [
   { id: '19', name: 'RLCraft', icon: 'https://media.forgecdn.net/avatars/1729/298/639100433200568522.png', count: 1 },
 ]
 
-let cachedCookieHeader: { value: string; expiresAt: number } | null = null
+let cachedBoxToPlayAuth: { cookieHeader: string; serverId: string; expiresAt: number } | null = null
 
 const logModpacks = (level: 'info' | 'warn' | 'error', message: string, details?: Record<string, unknown>) => {
   const payload = details ? { message, ...details } : { message }
@@ -180,6 +181,42 @@ const toCookieHeader = (value: string | null | undefined): string | null => {
   return `${BOXTOPLAY_SESSION_COOKIE_KEY}=${trimmed}`
 }
 
+const normalizeServerId = (value: string | number | null | undefined): string | null => {
+  if (value == null) {
+    return null
+  }
+
+  const serverId = String(value).trim()
+
+  if (!SAFE_NUMERIC_ID_PATTERN.test(serverId)) {
+    return null
+  }
+
+  return serverId
+}
+
+const extractGistId = (value: string | null | undefined): string | null => {
+  if (!value) {
+    return null
+  }
+
+  const raw = value.trim()
+
+  if (SAFE_ID_PATTERN.test(raw) && !raw.includes('/')) {
+    return raw
+  }
+
+  try {
+    const parsed = new URL(raw)
+    const parts = parsed.pathname.split('/').filter(Boolean)
+    const gistId = parts.at(-1) ?? null
+
+    return gistId && SAFE_ID_PATTERN.test(gistId) ? gistId : null
+  } catch {
+    return null
+  }
+}
+
 const getActiveCookieFromState = (state: BoxToPlayGistState): string | null => {
   const accounts = Array.isArray(state.accounts) ? state.accounts : []
 
@@ -211,9 +248,46 @@ const getActiveCookieFromState = (state: BoxToPlayGistState): string | null => {
   return null
 }
 
-const loadBoxToPlayCookieHeaderFromGist = async (): Promise<string> => {
+const getActiveServerIdFromState = (state: BoxToPlayGistState): string | null => {
+  const fromCurrentServerId = normalizeServerId(state.current_server_id)
+
+  if (fromCurrentServerId) {
+    return fromCurrentServerId
+  }
+
+  const accounts = Array.isArray(state.accounts) ? state.accounts : []
+
+  if (accounts.length === 0) {
+    return null
+  }
+
+  const activeIndex =
+    Number.isInteger(state.active_account_index) &&
+    (state.active_account_index ?? -1) >= 0 &&
+    (state.active_account_index ?? -1) < accounts.length
+      ? (state.active_account_index as number)
+      : 0
+
+  const fromActiveAccount = normalizeServerId(accounts[activeIndex]?.server_id)
+
+  if (fromActiveAccount) {
+    return fromActiveAccount
+  }
+
+  for (const account of accounts) {
+    const fallbackServerId = normalizeServerId(account?.server_id)
+
+    if (fallbackServerId) {
+      return fallbackServerId
+    }
+  }
+
+  return null
+}
+
+const loadBoxToPlayAuthFromGist = async (): Promise<{ cookieHeader: string; serverId: string }> => {
   const token = process.env.GH_TOKEN
-  const gistId = process.env.GIST_ID
+  const gistId = extractGistId(process.env.GIST_ID)
 
   if (!token || !gistId) {
     logModpacks('error', 'Missing Gist configuration for BoxToPlay auth', {
@@ -250,32 +324,37 @@ const loadBoxToPlayCookieHeaderFromGist = async (): Promise<string> => {
     try {
       const state = JSON.parse(file.content) as BoxToPlayGistState
       const cookieHeader = getActiveCookieFromState(state)
+      const serverId = getActiveServerIdFromState(state)
 
-      if (cookieHeader) {
-        return cookieHeader
+      if (cookieHeader && serverId) {
+        return { cookieHeader, serverId }
       }
     } catch {
       // ignore non-JSON gist files and try next
     }
   }
 
-  logModpacks('error', 'No usable BoxToPlay cookie found in Gist payload')
-  throw new Error('No usable BoxToPlay session cookie found in Gist state')
+  logModpacks('error', 'No usable BoxToPlay auth data found in Gist payload')
+  throw new Error('No usable BoxToPlay session cookie or current_server_id found in Gist state')
 }
 
-const getBoxToPlayCookieHeader = async (): Promise<string> => {
-  if (cachedCookieHeader && cachedCookieHeader.expiresAt > Date.now()) {
-    return cachedCookieHeader.value
+const getBoxToPlayAuth = async (): Promise<{ cookieHeader: string; serverId: string }> => {
+  if (cachedBoxToPlayAuth && cachedBoxToPlayAuth.expiresAt > Date.now()) {
+    return {
+      cookieHeader: cachedBoxToPlayAuth.cookieHeader,
+      serverId: cachedBoxToPlayAuth.serverId,
+    }
   }
 
-  const value = await loadBoxToPlayCookieHeaderFromGist()
+  const auth = await loadBoxToPlayAuthFromGist()
 
-  cachedCookieHeader = {
-    value,
+  cachedBoxToPlayAuth = {
+    cookieHeader: auth.cookieHeader,
+    serverId: auth.serverId,
     expiresAt: Date.now() + COOKIE_CACHE_TTL_MS,
   }
 
-  return value
+  return auth
 }
 
 const getBoxToPlayRequestHeaders = (cookieHeader: string): HeadersInit => ({
@@ -287,10 +366,9 @@ const getBoxToPlayRequestHeaders = (cookieHeader: string): HeadersInit => ({
   'x-requested-with': 'XMLHttpRequest',
 })
 
-const fetchBoxToPlayWithAuth = async (url: string): Promise<Response> => {
-  const cachedCookie = await getBoxToPlayCookieHeader()
+const fetchBoxToPlayWithAuth = async (url: string, cookieHeader: string): Promise<Response> => {
   let response = await fetchWithTimeout(url, {
-    headers: getBoxToPlayRequestHeaders(cachedCookie),
+    headers: getBoxToPlayRequestHeaders(cookieHeader),
   })
 
   if (response.status === 401 || response.status === 403) {
@@ -298,10 +376,10 @@ const fetchBoxToPlayWithAuth = async (url: string): Promise<Response> => {
       status: response.status,
       endpoint: url,
     })
-    cachedCookieHeader = null
-    const freshCookie = await getBoxToPlayCookieHeader()
+    cachedBoxToPlayAuth = null
+    const freshAuth = await getBoxToPlayAuth()
     response = await fetchWithTimeout(url, {
-      headers: getBoxToPlayRequestHeaders(freshCookie),
+      headers: getBoxToPlayRequestHeaders(freshAuth.cookieHeader),
     })
 
     if (response.status === 401 || response.status === 403) {
@@ -315,21 +393,13 @@ const fetchBoxToPlayWithAuth = async (url: string): Promise<Response> => {
   return response
 }
 
-const getBoxToPlayServerId = () => {
-  const serverId = (process.env.BOXTOPLAY_SERVER_ID ?? DEFAULT_BOXTOPLAY_SERVER_ID).trim()
-
-  if (!SAFE_NUMERIC_ID_PATTERN.test(serverId)) {
-    throw new Error('BOXTOPLAY_SERVER_ID must be numeric')
-  }
-
-  return serverId
-}
-
 export const getModpackCategories = createServerFn({ method: 'GET' }).handler(async (): Promise<ModpackCategory[]> => {
-  const serverId = getBoxToPlayServerId()
+  const auth = await getBoxToPlayAuth()
+  const serverId = auth.serverId
 
   const response = await fetchBoxToPlayWithAuth(
     `https://www.boxtoplay.com/minecraft/modpacks/cursemodpacks/categories/${encodeURIComponent(serverId)}`,
+    auth.cookieHeader,
   )
 
   if (!response.ok) {
@@ -369,7 +439,8 @@ export const searchModpacks = createServerFn({ method: 'GET' })
     const query = (input?.query ?? '').trim()
     const pageId = Number.isInteger(input?.pageId) && (input?.pageId ?? 0) >= 0 ? (input?.pageId ?? 0) : 0
     const categoryId = (input?.categoryId ?? '0').trim()
-    const serverId = getBoxToPlayServerId()
+    const auth = await getBoxToPlayAuth()
+    const serverId = auth.serverId
 
     if (!query) {
       return {
@@ -399,6 +470,7 @@ export const searchModpacks = createServerFn({ method: 'GET' })
 
     const response = await fetchBoxToPlayWithAuth(
       `https://www.boxtoplay.com/minecraft/modpacks/cursemodpacks/search/${encodeURIComponent(serverId)}?${searchParams.toString()}`,
+      auth.cookieHeader,
     )
 
     if (!response.ok) {
