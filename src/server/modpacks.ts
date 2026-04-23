@@ -44,6 +44,7 @@ interface GitHubGistApiResponse {
 }
 
 interface BoxToPlayStateAccount {
+  email?: string | null
   cookies?: Record<string, string | undefined> | null
   server_id?: string | number | null
 }
@@ -87,6 +88,8 @@ const SAFE_ID_PATTERN = /^[A-Za-z0-9._:-]+$/
 const SAFE_NUMERIC_ID_PATTERN = /^\d+$/
 const MODPACK_SEARCH_PAGE_SIZE = 10
 const BOXTOPLAY_SESSION_COOKIE_KEY = 'BOXTOPLAY_SESSION'
+const PRIMARY_ACCOUNT_EMAIL = 'aurejesd@gmail.com'
+const SECONDARY_ACCOUNT_EMAIL = 'yenistaxlv1@gmail.com'
 const BOXTOPLAY_REFERER = 'https://www.boxtoplay.com/minecraft/modpacks'
 const BOXTOPLAY_USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'
 const COOKIE_CACHE_TTL_MS = 60_000
@@ -175,7 +178,45 @@ const toCookieHeader = (value: string | null | undefined): string | null => {
   }
 
   if (trimmed.includes('=')) {
-    return trimmed
+    const cookiePairs = trimmed
+      .split(';')
+      .map((part) => part.trim())
+      .filter(Boolean)
+      .map((pair) => {
+        const separatorIndex = pair.indexOf('=')
+
+        if (separatorIndex <= 0) {
+          return null
+        }
+
+        const key = pair.slice(0, separatorIndex).trim()
+        const cookieValue = pair.slice(separatorIndex + 1).trim()
+
+        if (!key || !cookieValue || !isSafeText(key) || !isSafeText(cookieValue)) {
+          return null
+        }
+
+        return [key, cookieValue] as const
+      })
+      .filter((entry): entry is readonly [string, string] => entry !== null)
+
+    if (cookiePairs.length === 0) {
+      return null
+    }
+
+    const deduplicated = new Map<string, string>()
+
+    for (const [key, cookieValue] of cookiePairs) {
+      deduplicated.set(key, cookieValue)
+    }
+
+    if (!deduplicated.has(BOXTOPLAY_SESSION_COOKIE_KEY)) {
+      return null
+    }
+
+    return Array.from(deduplicated.entries())
+      .map(([key, cookieValue]) => `${key}=${cookieValue}`)
+      .join('; ')
   }
 
   return `${BOXTOPLAY_SESSION_COOKIE_KEY}=${trimmed}`
@@ -220,29 +261,29 @@ const extractGistId = (value: string | null | undefined): string | null => {
 const getActiveCookieFromState = (state: BoxToPlayGistState): string | null => {
   const accounts = Array.isArray(state.accounts) ? state.accounts : []
 
-  if (accounts.length === 0) {
+  if (accounts.length < 2) {
+    logModpacks('error', 'Invalid accounts payload in Gist', {
+      accountsLength: accounts.length,
+    })
     return null
   }
 
-  const activeIndex =
-    Number.isInteger(state.active_account_index) &&
-    (state.active_account_index ?? -1) >= 0 &&
-    (state.active_account_index ?? -1) < accounts.length
-      ? (state.active_account_index as number)
-      : 0
+  const activeIndexRaw = state.active_account_index
+  const activeIndex = activeIndexRaw === 0 ? 0 : 1
+  const targetEmail = activeIndex === 0 ? PRIMARY_ACCOUNT_EMAIL : SECONDARY_ACCOUNT_EMAIL
+  const accountByExpectedEmail = accounts.find((account) => account?.email?.trim().toLowerCase() === targetEmail)
+  const selectedAccount = accountByExpectedEmail ?? accounts[activeIndex]
+  const activeCookie = toCookieHeader(selectedAccount?.cookies?.[BOXTOPLAY_SESSION_COOKIE_KEY])
 
-  const activeCookie = toCookieHeader(accounts[activeIndex]?.cookies?.[BOXTOPLAY_SESSION_COOKIE_KEY])
+  logModpacks('info', 'Selected BoxToPlay account from active_account_index', {
+    activeAccountIndex: state.active_account_index,
+    selectedEmail: selectedAccount?.email ?? null,
+    expectedEmail: targetEmail,
+    usedExpectedEmailMatch: Boolean(accountByExpectedEmail),
+  })
 
   if (activeCookie) {
     return activeCookie
-  }
-
-  for (const account of accounts) {
-    const fallbackCookie = toCookieHeader(account?.cookies?.[BOXTOPLAY_SESSION_COOKIE_KEY])
-
-    if (fallbackCookie) {
-      return fallbackCookie
-    }
   }
 
   return null
