@@ -1,0 +1,15 @@
+schema: anvil.component/v1
+type: skill
+name: frontend-design
+title: Frontend Design
+version: 0.1.0
+description: Create distinctive, production-grade frontend interfaces — avoid generic patterns
+targets:
+  copilot:
+    supported: true
+  claude:
+    supported: true
+  cursor:
+    supported: true
+entry:
+  file: index.md
