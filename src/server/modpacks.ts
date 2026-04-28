@@ -76,7 +76,7 @@ const MODPACK_SEARCH_PAGE_SIZE = 20
 const MAX_QUERY_LENGTH = 80
 const MAX_MODPACK_NAME_LENGTH = 120
 const SAFE_ID_PATTERN = /^[A-Za-z0-9._:-]+$/
-const REQUEST_TIMEOUT_MS = 10_000
+const REQUEST_TIMEOUT_MS = 30_000
 
 // =============================================================================
 // Helpers
@@ -158,6 +158,8 @@ const loadCatalogFromGist = async (): Promise<ModpackCatalog> => {
     },
   })
 
+  logModpacks('info', 'Gist fetch completed', { status: response.status, statusText: response.statusText })
+
   if (!response.ok) {
     logModpacks('error', 'Failed to load Gist', {
       status: response.status,
@@ -167,13 +169,32 @@ const loadCatalogFromGist = async (): Promise<ModpackCatalog> => {
   }
 
   const payload = (await response.json()) as { files?: Record<string, { content?: string | null }> }
+  logModpacks('info', 'Gist JSON parsed', { files: Object.keys(payload.files ?? {}) })
+
   const catalogFile = payload.files?.['modpacks_catalog.json']
 
   if (!catalogFile?.content) {
     throw new Error('modpacks_catalog.json not found in Gist — the worker has not scraped the catalog yet')
   }
 
-  const catalog = JSON.parse(catalogFile.content) as ModpackCatalog
+  logModpacks('info', 'Catalog JSON size', { bytes: catalogFile.content.length })
+
+  let catalog: ModpackCatalog
+  try {
+    catalog = JSON.parse(catalogFile.content) as ModpackCatalog
+  } catch (parseError) {
+    logModpacks('error', 'Catalog JSON parse failed', {
+      error: parseError instanceof Error ? parseError.message : String(parseError),
+      preview: catalogFile.content.slice(0, 200),
+    })
+    throw new Error('Failed to parse modpack catalog JSON')
+  }
+
+  logModpacks('info', 'Catalog parsed successfully', {
+    updatedAt: catalog.updated_at,
+    total: catalog.total,
+    categories: catalog.categories?.length ?? 0,
+  })
 
   logModpacks('info', 'Catalog loaded from Gist', {
     updatedAt: catalog.updated_at,
