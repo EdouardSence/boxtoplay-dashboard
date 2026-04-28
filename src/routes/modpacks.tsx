@@ -104,35 +104,7 @@ function ModpacksPage() {
             onChange={(event) => setSearchTerm(event.target.value)}
           />
 
-          {categoriesQuery.isPending ? (
-            <p className="text-sm text-zinc-400">Loading categories...</p>
-          ) : categoriesQuery.isError ? (
-            <p className="text-sm text-rose-300">Failed to load categories. Showing all by default.</p>
-          ) : categoriesQuery.data.length > 0 ? (
-            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-              {categoriesQuery.data.map((category) => (
-                <button
-                  key={category.id}
-                  type="button"
-                  onClick={() => setSelectedCategoryId(category.id)}
-                  className={
-                    selectedCategoryId === category.id
-                      ? 'flex items-center gap-2 rounded-md border border-sky-400/70 bg-sky-950/20 px-3 py-2 text-left text-sm text-zinc-100 transition-colors'
-                      : 'flex items-center gap-2 rounded-md border border-zinc-800 bg-zinc-950 px-3 py-2 text-left text-sm text-zinc-100 transition-colors hover:border-zinc-700'
-                  }
-                >
-                  {category.icon ? (
-                    <img src={category.icon} alt={`${category.name} icon`} className="h-5 w-5 rounded object-cover" />
-                  ) : (
-                    <div className="h-5 w-5 rounded bg-zinc-800" />
-                  )}
-                  <span className="truncate">
-                    {category.name} ({category.count})
-                  </span>
-                </button>
-              ))}
-            </div>
-          ) : null}
+          
         </CardContent>
       </Card>
 

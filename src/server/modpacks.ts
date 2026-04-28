@@ -150,11 +150,13 @@ const loadCatalogFromGist = async (): Promise<ModpackCatalog> => {
 
   logModpacks('info', 'Loading modpack catalog from Gist...')
 
-  const response = await fetchWithTimeout(`https://api.github.com/gists/${encodeURIComponent(gistId)}`, {
+  // Use raw URL to avoid Gist API truncation for large files
+  const rawUrl = `https://gist.githubusercontent.com/raw/${gistId}/modpacks_catalog.json`
+  logModpacks('info', 'Fetching catalog from raw URL', { url: rawUrl })
+
+  const response = await fetchWithTimeout(rawUrl, {
     headers: {
-      accept: 'application/vnd.github+json',
-      authorization: `Bearer ${token}`,
-      'x-github-api-version': '2022-11-28',
+      accept: 'application/json',
     },
   })
 
@@ -168,24 +170,18 @@ const loadCatalogFromGist = async (): Promise<ModpackCatalog> => {
     throw new Error('Failed to load modpack catalog from Gist')
   }
 
-  const payload = (await response.json()) as { files?: Record<string, { content?: string | null }> }
-  logModpacks('info', 'Gist JSON parsed', { files: Object.keys(payload.files ?? {}) })
+  const rawText = await response.text()
+  logModpacks('info', 'Raw response size', { bytes: rawText.length })
 
-  const catalogFile = payload.files?.['modpacks_catalog.json']
-
-  if (!catalogFile?.content) {
-    throw new Error('modpacks_catalog.json not found in Gist — the worker has not scraped the catalog yet')
-  }
-
-  logModpacks('info', 'Catalog JSON size', { bytes: catalogFile.content.length })
+  logModpacks('info', 'Catalog JSON size', { bytes: rawText.length })
 
   let catalog: ModpackCatalog
   try {
-    catalog = JSON.parse(catalogFile.content) as ModpackCatalog
+    catalog = JSON.parse(rawText) as ModpackCatalog
   } catch (parseError) {
     logModpacks('error', 'Catalog JSON parse failed', {
       error: parseError instanceof Error ? parseError.message : String(parseError),
-      preview: catalogFile.content.slice(0, 200),
+      preview: rawText.slice(0, 200),
     })
     throw new Error('Failed to parse modpack catalog JSON')
   }
