@@ -269,40 +269,9 @@ export const searchModpacks = createServerFn({ method: 'GET' })
 export const getModpackVersions = createServerFn({ method: 'GET' })
   .inputValidator((data: unknown) => data as { packId?: string })
   .handler(async ({ data }): Promise<ModpackVersion[]> => {
-    const packId = (data?.packId ?? '').trim()
-
-    if (!packId) {
-      return []
-    }
-
-    if (!SAFE_ID_PATTERN.test(packId)) {
-      throw new Error('Invalid modpack id')
-    }
-
-    const response = await fetchWithTimeout(`https://api.boxtoplay.com/v1/modpacks/${encodeURIComponent(packId)}/versions`, {
-      headers: {
-        accept: 'application/json',
-      },
-    })
-
-    if (!response.ok) {
-      throw new Error('Failed to fetch modpack versions')
-    }
-
-    const payload = (await response.json()) as BoxToPlayModpackVersionsResponse | BoxToPlayModpackVersionApi[]
-    const list = Array.isArray(payload) ? payload : payload.versions ?? payload.data ?? []
-
-    return list
-      .filter((version) => {
-        const minecraftVersion = version.minecraft_version ?? ''
-
-        return SAFE_ID_PATTERN.test(String(version.id)) && isSafeText(version.version_name) && isSafeText(minecraftVersion)
-      })
-      .map((version) => ({
-        id: String(version.id),
-        versionName: version.version_name,
-        minecraftVersion: version.minecraft_version ?? null,
-      }))
+    // Versions are not included in the Gist catalog — the scraper only fetches categories and modpack list.
+    // Users should use the GitHub workflow to select and install modpacks.
+    return []
   })
 
 export const triggerModpackSwitch = createServerFn({ method: 'POST' })

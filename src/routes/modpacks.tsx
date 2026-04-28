@@ -5,7 +5,7 @@ import * as React from 'react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
-import { getModpackCategories, getModpackVersions, searchModpacks, triggerModpackSwitch } from '@/server/modpacks'
+import { getModpackCategories, searchModpacks, triggerModpackSwitch } from '@/server/modpacks'
 
 export const Route = createFileRoute('/modpacks')({
   component: ModpacksPage,
@@ -17,8 +17,6 @@ function ModpacksPage() {
   const [currentPage, setCurrentPage] = React.useState(0)
   const [selectedModpackId, setSelectedModpackId] = React.useState<string | null>(null)
   const [selectedModpackName, setSelectedModpackName] = React.useState<string | null>(null)
-  const [selectedVersionId, setSelectedVersionId] = React.useState('')
-  const [selectedCategoryId, setSelectedCategoryId] = React.useState('0')
   const [toastMessage, setToastMessage] = React.useState<string | null>(null)
 
   const categoriesQuery = useQuery({
@@ -26,6 +24,7 @@ function ModpacksPage() {
     queryFn: () => getModpackCategories(),
   })
 
+  // Keep search term debounced
   React.useEffect(() => {
     const timeout = window.setTimeout(() => {
       setDebouncedSearchTerm(searchTerm)
@@ -36,66 +35,51 @@ function ModpacksPage() {
     }
   }, [searchTerm])
 
+  // Reset selection on search change
   React.useEffect(() => {
     setCurrentPage(0)
     setSelectedModpackId(null)
     setSelectedModpackName(null)
-    setSelectedVersionId('')
-  }, [debouncedSearchTerm, selectedCategoryId])
+  }, [debouncedSearchTerm])
 
+  // Auto-clear toast
   React.useEffect(() => {
-    if (!toastMessage) {
-      return
-    }
-
-    const timeout = window.setTimeout(() => {
-      setToastMessage(null)
-    }, 3000)
-
-    return () => {
-      window.clearTimeout(timeout)
-    }
+    if (!toastMessage) return
+    const timeout = window.setTimeout(() => setToastMessage(null), 3000)
+    return () => window.clearTimeout(timeout)
   }, [toastMessage])
 
   const searchQuery = useQuery({
-    queryKey: ['modpacks-search', debouncedSearchTerm, selectedCategoryId, currentPage],
+    queryKey: ['modpacks-search', debouncedSearchTerm, currentPage],
     queryFn: () =>
       searchModpacks({
-        data: { query: debouncedSearchTerm, pageId: currentPage, categoryId: selectedCategoryId },
+        data: { query: debouncedSearchTerm, pageId: currentPage },
       }),
     enabled: debouncedSearchTerm.trim().length > 0,
   })
 
-  const versionsQuery = useQuery({
-    queryKey: ['modpacks-versions', selectedModpackId],
-    queryFn: () => getModpackVersions({ data: { packId: selectedModpackId ?? '' } }),
-    enabled: !!selectedModpackId,
-  })
-
   const installMutation = useMutation({
     mutationFn: async () => {
-      if (!selectedModpackName || !selectedVersionId) {
-        return
-      }
+      if (!selectedModpackId || !selectedModpackName) return
 
       await triggerModpackSwitch({
         data: {
           modpackName: selectedModpackName,
-          modpackVersionId: selectedVersionId,
+          modpackVersionId: '', // User inputs modpack ID directly in workflow
         },
       })
     },
     onSuccess: () => {
       if (selectedModpackName) {
-        setToastMessage(`Workflow dispatched for ${selectedModpackName}.`)
+        setToastMessage(`Workflow dispatched for ${selectedModpackName}. Check GitHub Actions to select version.`)
       }
     },
   })
 
-  const canDispatchWorkflow = !!selectedModpackId && !!selectedVersionId && !installMutation.isPending
+  const canDispatchWorkflow = !!selectedModpackId && !installMutation.isPending
   const searchResults = searchQuery.data?.modpacks ?? []
   const totalResults = searchQuery.data?.totalCount ?? 0
-  const pageSize = searchQuery.data?.pageSize ?? 10
+  const pageSize = searchQuery.data?.pageSize ?? 20
   const totalPages = totalResults > 0 ? Math.ceil(totalResults / pageSize) : 0
   const canGoToPreviousPage = currentPage > 0
   const canGoToNextPage = totalPages > 0 && currentPage + 1 < totalPages
@@ -103,7 +87,6 @@ function ModpacksPage() {
   const onSelectModpack = (id: string, name: string) => {
     setSelectedModpackId(id)
     setSelectedModpackName(name)
-    setSelectedVersionId('')
   }
 
   return (
@@ -232,50 +215,32 @@ function ModpacksPage() {
             <CardTitle>Install on Server</CardTitle>
             <CardDescription>
               Selected modpack: <span className="font-medium text-zinc-100">{selectedModpackName}</span>
+              <br />
+              <span className="text-xs text-zinc-500">(ID: {selectedModpackId})</span>
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            {versionsQuery.isPending ? (
-              <p className="text-sm text-zinc-400">Loading versions...</p>
-            ) : versionsQuery.isError ? (
-              <p className="text-sm text-rose-300">Failed to load versions. Please reselect the modpack and retry.</p>
-            ) : versionsQuery.data.length === 0 ? (
-              <p className="text-sm text-zinc-400">No versions available for this modpack.</p>
-            ) : (
-              <>
-                <select
-                  value={selectedVersionId}
-                  onChange={(event) => setSelectedVersionId(event.target.value)}
-                  className="flex h-10 w-full rounded-md border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 outline-none focus:border-zinc-600 focus:ring-2 focus:ring-zinc-700"
-                >
-                  <option value="">Select a version</option>
-                  {versionsQuery.data.map((version) => (
-                    <option key={version.id} value={version.id}>
-                      {version.versionName}
-                      {version.minecraftVersion ? ` · MC ${version.minecraftVersion}` : ''}
-                    </option>
-                  ))}
-                </select>
+            <p className="text-sm text-zinc-400">
+              Select the modpack version in the GitHub Actions workflow after dispatching.
+            </p>
 
-                <Button
-                  disabled={!canDispatchWorkflow}
-                  aria-label="Install on Server. Requires a selected modpack version."
-                  onClick={() => installMutation.mutate()}
-                >
-                  {installMutation.isPending ? (
-                    <span className="inline-flex items-center gap-2">
-                      <span className="h-4 w-4 animate-spin rounded-full border-2 border-zinc-100 border-t-transparent" />
-                      Dispatching...
-                    </span>
-                  ) : (
-                    'Install on Server'
-                  )}
-                </Button>
+            <Button
+              disabled={!canDispatchWorkflow}
+              aria-label="Install on Server. Dispatches workflow."
+              onClick={() => installMutation.mutate()}
+            >
+              {installMutation.isPending ? (
+                <span className="inline-flex items-center gap-2">
+                  <span className="h-4 w-4 animate-spin rounded-full border-2 border-zinc-100 border-t-transparent" />
+                  Dispatching...
+                </span>
+              ) : (
+                'Dispatch Workflow'
+              )}
+            </Button>
 
-                {installMutation.isError && (
-                  <p className="text-sm text-rose-300">Failed to start installation. Please retry or contact support.</p>
-                )}
-              </>
+            {installMutation.isError && (
+              <p className="text-sm text-rose-300">Failed to start installation. Please retry or contact support.</p>
             )}
           </CardContent>
         </Card>
