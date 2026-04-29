@@ -8,12 +8,6 @@ import { AppSidebar } from '@/components/layout/app-sidebar'
 
 import appCss from '../styles.css?url'
 
-// Google Fonts: Geist for headings, JetBrains Mono for data
-const fontLink = document.createElement('link')
-fontLink.href = 'https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap'
-fontLink.rel = 'stylesheet'
-document.head.appendChild(fontLink)
-
 export const Route = createRootRoute({
   head: () => ({
     meta: [
@@ -23,6 +17,9 @@ export const Route = createRootRoute({
     ],
     links: [
       { rel: 'stylesheet', href: appCss },
+      { rel: 'preconnect', href: 'https://fonts.googleapis.com' },
+      { rel: 'preconnect', href: 'https://fonts.gstatic.com', crossOrigin: 'anonymous' as const },
+      { rel: 'stylesheet', href: 'https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap' },
     ],
   }),
   shellComponent: RootDocument,
