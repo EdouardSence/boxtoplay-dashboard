@@ -256,6 +256,48 @@ export const deleteBackupFile = createServerFn({ method: 'POST' })
     return { success: true }
   })
 
+// =============================================================================
+// File Revisions (Version History)
+// =============================================================================
+
+export interface FileRevision {
+  id: string
+  modifiedTime: string
+  size: string
+}
+
+export const getFileRevisions = createServerFn({ method: 'GET' })
+  .inputValidator(z.object({ fileId: z.string() }))
+  .handler(async ({ input }): Promise<FileRevision[]> => {
+    try {
+      const accessToken = await getValidAccessToken()
+      const queryParams = new URLSearchParams({
+        fields: 'revisions(id,modifiedTime,size)',
+      })
+
+      const response = await fetch(
+        `https://www.googleapis.com/drive/v3/files/${input.fileId}/revisions?${queryParams.toString()}`,
+        {
+          headers: { Authorization: `Bearer ${accessToken}` },
+        }
+      )
+
+      if (!response.ok) {
+        const errorText = await response.text().catch(() => 'Unknown error')
+        console.error('[backups] File revisions error', { status: response.status, error: errorText })
+        return []
+      }
+
+      const data = (await response.json()) as { revisions: FileRevision[] }
+      return data.revisions ?? []
+    } catch (error) {
+      console.error('[backups] Failed to fetch file revisions', {
+        error: error instanceof Error ? error.message : String(error),
+      })
+      return []
+    }
+  })
+
 export const restoreFullState = createServerFn({ method: 'POST' })
   .inputValidator(z.object({ fileId: z.string(), modpackName: z.string(), modpackVersionId: z.string().optional() }))
   .handler(async ({ input }) => {
