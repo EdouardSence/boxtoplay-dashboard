@@ -70,11 +70,15 @@ function BackupsPage() {
   const backupsQuery = useQuery({
     queryKey: ['backups-list'],
     queryFn: () => getBackupsList(),
+    staleTime: 0,
+    refetchOnMount: true,
   })
 
   const statsQuery = useQuery({
     queryKey: ['drive-stats'],
     queryFn: () => getDriveStorageStats(),
+    staleTime: 0,
+    refetchOnMount: true,
   })
 
   // Mutations
