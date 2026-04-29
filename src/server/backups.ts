@@ -172,14 +172,16 @@ export const getBackupsList = createServerFn({ method: 'GET' }).handler(async ()
     const data = (await response.json()) as GoogleDriveResponse
 
     // Parse filenames to extract modpack info
+    // Accepts: FINAL_*, final_backup_*, final_*
     const backups: BackupFile[] = (data.files ?? []).map((file) => {
-      const isFinal = file.name.startsWith('FINAL_')
+      const nameLower = file.name.toLowerCase()
+      const isFinal = nameLower.startsWith('final_') || nameLower.startsWith('final_backup_')
       let associatedModpack = ''
 
       if (isFinal) {
-        // Format: FINAL_ModpackName_Date.zip or FINAL_Modpack-Name_Date.zip
-        // Extract modpack name between FINAL_ and the date part
-        const withoutPrefix = file.name.replace(/^FINAL_/, '')
+        // Format: final_backup_ModpackName_Date.zip or final_ModpackName_Date.zip
+        // Extract modpack name between prefix and the date part
+        let withoutPrefix = file.name.replace(/^final_backup_/i, '').replace(/^final_/i, '')
         // Match everything up to the last underscore before the date pattern
         const dateMatch = withoutPrefix.match(/_(\d{8})_\d{4}/)
         if (dateMatch) {
