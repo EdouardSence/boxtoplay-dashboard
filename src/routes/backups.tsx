@@ -36,7 +36,7 @@ import {
 } from '@/components/ui/alert-dialog'
 import { getBackupsList, getDriveStorageStats, deleteBackupFile, restoreFullState } from '@/server/backups'
 import type { BackupFile } from '@/server/backups'
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { toast } from 'sonner'
 import { Toaster } from 'sonner'
 
@@ -65,6 +65,7 @@ function BackupsPage() {
   const [search, setSearch] = useState('')
   const [deleteTarget, setDeleteTarget] = useState<BackupFile | null>(null)
   const [restoreTarget, setRestoreTarget] = useState<BackupFile | null>(null)
+  const [restoreVersionId, setRestoreVersionId] = useState('20314') // Default to Star Technology
 
   // Queries
   const backupsQuery = useQuery({
@@ -378,8 +379,17 @@ function BackupsPage() {
               <span className="text-emerald-400 font-semibold">
                 {restoreTarget?.associatedModpack}
               </span>{' '}
-              et écraser la map actuelle par celle-ci. Confirmer ?
+              et écraser la map actuelle par celle-ci.
             </AlertDialogDescription>
+            <div className="mt-4">
+              <label className="text-sm text-zinc-400">Version ID du modpack :</label>
+              <Input
+                value={restoreVersionId}
+                onChange={(e) => setRestoreVersionId(e.target.value)}
+                className="mt-1 bg-zinc-800 border-zinc-700 text-zinc-100"
+                placeholder="ex: 20314"
+              />
+            </div>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel className="bg-zinc-800 text-zinc-100 hover:bg-zinc-700 border-zinc-700">
@@ -392,6 +402,7 @@ function BackupsPage() {
                 restoreMutation.mutate({
                   fileId: restoreTarget.id,
                   modpackName: restoreTarget.associatedModpack,
+                  modpackVersionId: restoreVersionId,
                 })
               }
               disabled={restoreMutation.isPending}

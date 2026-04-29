@@ -257,7 +257,7 @@ export const deleteBackupFile = createServerFn({ method: 'POST' })
   })
 
 export const restoreFullState = createServerFn({ method: 'POST' })
-  .inputValidator(z.object({ fileId: z.string(), modpackName: z.string() }))
+  .inputValidator(z.object({ fileId: z.string(), modpackName: z.string(), modpackVersionId: z.string().optional() }))
   .handler(async ({ input }) => {
     const ghToken = process.env.GH_TOKEN
     if (!ghToken) {
@@ -282,6 +282,7 @@ export const restoreFullState = createServerFn({ method: 'POST' })
           inputs: {
             restore_file_id: input.fileId,
             force_modpack: input.modpackName,
+            restore_pack_id: input.modpackVersionId || '',
           },
         }),
       }
