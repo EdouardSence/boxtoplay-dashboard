@@ -1,3 +1,5 @@
+'use client'
+
 import { Link, useRouterState } from '@tanstack/react-router'
 import { Boxes, DatabaseBackup, LayoutDashboard, Menu, X } from 'lucide-react'
 import { useState } from 'react'
