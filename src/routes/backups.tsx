@@ -209,25 +209,41 @@ function BackupsPage() {
         </CardHeader>
         <CardContent className="px-4 md:px-6 pb-6">
           {backupsQuery.isPending && (
-            <div className="flex items-center justify-center py-12">
-              <Loader2 className="h-8 w-8 animate-spin text-zinc-500" />
+            <div className="space-y-3">
+              {[1, 2, 3].map((i) => (
+                <div key={i} className="flex items-center gap-4 p-4 rounded-xl bg-zinc-900/30 border border-white/5">
+                  <div className="skeleton h-10 w-10 shrink-0" />
+                  <div className="flex-1 space-y-2">
+                    <div className="skeleton h-4 w-3/4" />
+                    <div className="skeleton h-3 w-1/2" />
+                  </div>
+                  <div className="skeleton h-8 w-8" />
+                </div>
+              ))}
             </div>
           )}
 
           {backupsQuery.isError && (
-            <p className="text-sm text-rose-400">Erreur lors du chargement des sauvegardes.</p>
+            <div className="flex flex-col items-center justify-center py-12 text-center rounded-xl bg-rose-950/10 border border-rose-500/20">
+              <Archive className="h-12 w-12 text-rose-500" />
+              <p className="mt-4 text-sm text-rose-400 font-medium">Erreur lors du chargement</p>
+              <p className="mt-1 text-xs text-zinc-500">Vérifiez votre connexion et réessayez</p>
+            </div>
           )}
 
           {!backupsQuery.isPending && !backupsQuery.isError && filteredBackups.length === 0 && (
-            <div className="flex flex-col items-center justify-center py-12 text-center">
-              <Archive className="h-12 w-12 text-zinc-600" />
-              <p className="mt-4 text-sm text-zinc-500">Aucune sauvegarde trouvée</p>
+            <div className="flex flex-col items-center justify-center py-16 text-center rounded-xl bg-zinc-900/20 border border-white/5">
+              <div className="p-4 rounded-full bg-zinc-800/50">
+                <Archive className="h-8 w-8 text-zinc-600" />
+              </div>
+              <p className="mt-4 text-sm text-zinc-400 font-medium">Aucune sauvegarde trouvée</p>
+              <p className="mt-1 text-xs text-zinc-500">Les sauvegardes apparaîtront ici une fois créées</p>
             </div>
           )}
 
           {!backupsQuery.isPending && !backupsQuery.isError && filteredBackups.length > 0 && (
             <div className="overflow-x-auto -mx-4 md:mx-0">
-              <Table>
+              <Table className="table-mobile-card">
                 <TableHeader>
                   <TableRow className="border-white/5 hover:bg-transparent">
                     <TableHead className="text-zinc-500 font-medium">Nom du fichier</TableHead>
@@ -240,10 +256,10 @@ function BackupsPage() {
                   {filteredBackups.map((backup: BackupFile, index: number) => (
                     <TableRow
                       key={backup.id}
-                      className="border-white/5 hover:bg-zinc-800/30 transition-colors duration-300"
+                      className="border-white/5 hover:bg-zinc-800/30 transition-all duration-300 group"
                       style={{ animationDelay: `${index * 50}ms` }}
                     >
-                      <TableCell className="font-medium">
+                      <TableCell className="font-medium" data-label="Fichier">
                         <div className="flex flex-col gap-2">
                           <div className="flex items-center gap-2 flex-wrap">
                             <Archive className="h-5 w-5 text-zinc-500 shrink-0" />
@@ -253,7 +269,7 @@ function BackupsPage() {
                             {backup.isFinal && (
                               <Badge
                                 variant="secondary"
-                                className="bg-emerald-500/10 text-emerald-400 border-emerald-500/30 shrink-0 shadow-[0_0_12px_rgba(16,185,129,0.3)] animate-pulse"
+                                className="bg-emerald-500/10 text-emerald-400 border-emerald-500/30 shrink-0 glow-emerald animate-pulse"
                               >
                                 <Package className="h-3 w-3 mr-1" />
                                 Point de Restauration
@@ -267,13 +283,13 @@ function BackupsPage() {
                           )}
                         </div>
                       </TableCell>
-                      <TableCell className="text-zinc-400 font-mono text-sm whitespace-nowrap">
+                      <TableCell className="text-zinc-400 font-mono text-sm whitespace-nowrap" data-label="Date">
                         {formatDate(backup.createdTime)}
                       </TableCell>
-                      <TableCell className="text-zinc-400 font-mono text-sm">
+                      <TableCell className="text-zinc-400 font-mono text-sm" data-label="Taille">
                         {formatBytes(backup.size)}
                       </TableCell>
-                      <TableCell>
+                      <TableCell data-label="Actions">
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
                             <Button

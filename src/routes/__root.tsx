@@ -64,10 +64,10 @@ function RootDocument({ children }: { children: React.ReactNode }) {
 
 function RootLayout() {
   return (
-    <div className="flex min-h-screen">
+    <div className="flex min-h-screen flex-col md:flex-row">
       <AppSidebar />
       <main className="flex-1 p-4 md:p-6 lg:p-8 min-w-0">
-        <div className="max-w-7xl mx-auto animate-in fade-in slide-in-from-bottom-4 duration-500">
+        <div className="max-w-7xl mx-auto animate-fade-in-up">
           <Outlet />
         </div>
       </main>
@@ -80,26 +80,6 @@ function RootNotFound() {
     <div className="rounded-xl border border-white/10 bg-zinc-900/60 backdrop-blur-sm p-6 md:p-8">
       <h1 className="text-xl font-semibold text-zinc-100 font-display">Page introuvable</h1>
       <p className="mt-2 text-sm text-zinc-400">La route demandée n'existe pas.</p>
-    </div>
-  )
-}
-
-function RootLayout() {
-  return (
-    <div className="flex min-h-screen">
-      <AppSidebar />
-      <main className="flex-1 p-6">
-        <Outlet />
-      </main>
-    </div>
-  )
-}
-
-function RootNotFound() {
-  return (
-    <div className="rounded-lg border border-zinc-800 bg-zinc-900/60 p-6">
-      <h1 className="text-lg font-semibold text-zinc-100">Page introuvable</h1>
-      <p className="mt-2 text-sm text-zinc-400">La route demandée n’existe pas.</p>
     </div>
   )
 }
