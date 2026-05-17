@@ -124,7 +124,7 @@ async function getValidAccessToken(): Promise<string> {
     expiresAt: Date.now() + tokenResponse.expires_in * 1000,
   }
 
-  return tokenCache.access_token
+  return tokenCache.accessToken
 }
 
 // =============================================================================
@@ -264,6 +264,7 @@ export interface FileRevision {
   id: string
   modifiedTime: string
   size: string
+  downloadUrl: string | null
 }
 
 export const getFileRevisions = createServerFn({ method: 'GET' })
@@ -272,7 +273,7 @@ export const getFileRevisions = createServerFn({ method: 'GET' })
     try {
       const accessToken = await getValidAccessToken()
       const queryParams = new URLSearchParams({
-        fields: 'revisions(id,modifiedTime,size)',
+        fields: 'revisions(id,modifiedTime,size,downloadUrl)',
       })
 
       const response = await fetch(
@@ -288,8 +289,13 @@ export const getFileRevisions = createServerFn({ method: 'GET' })
         return []
       }
 
-      const data = (await response.json()) as { revisions: FileRevision[] }
-      return data.revisions ?? []
+      const data = (await response.json()) as { revisions: Array<{ id: string; modifiedTime: string; size: string; downloadUrl?: string }> }
+      return (data.revisions ?? []).map((r) => ({
+        id: r.id,
+        modifiedTime: r.modifiedTime,
+        size: r.size,
+        downloadUrl: r.downloadUrl ?? null,
+      }))
     } catch (error) {
       console.error('[backups] Failed to fetch file revisions', {
         error: error instanceof Error ? error.message : String(error),
@@ -306,8 +312,14 @@ export const restoreFullState = createServerFn({ method: 'POST' })
       throw new Error('GH_TOKEN environment variable is not set')
     }
 
-    const owner = 'edouardsences'
-    const repo = 'boxtoplay-v2'
+    const repository = process.env.GITHUB_REPO
+    if (!repository) {
+      throw new Error('GITHUB_REPO environment variable is not set')
+    }
+    const [owner, repo] = repository.split('/')
+    if (!owner || !repo) {
+      throw new Error('GITHUB_REPO must be in the format owner/repo')
+    }
     const workflowId = 'schedule.yml'
 
     const response = await fetch(

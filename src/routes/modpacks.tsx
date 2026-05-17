@@ -56,7 +56,6 @@ function ModpacksPage() {
       searchModpacks({
         data: { query: debouncedSearchTerm, pageId: currentPage },
       }),
-    enabled: debouncedSearchTerm.trim().length > 0,
   })
 
   const installMutation = useMutation({
@@ -120,18 +119,19 @@ function ModpacksPage() {
       </Card>
 
       {/* Results */}
-      {debouncedSearchTerm.trim().length > 0 && (
-        <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
-          <Card className="border-white/10 bg-zinc-900/60 backdrop-blur-xl shadow-xl shadow-black/20">
-            <CardHeader className="px-4 md:px-6 pb-4">
-              <div className="flex items-center justify-between flex-wrap gap-4">
-                <div>
-                  <CardTitle className="text-lg font-display">Results</CardTitle>
-                  <CardDescription className="text-zinc-500">
-                    {totalResults} result{totalResults > 1 ? 's' : ''} · Page {currentPage + 1}
-                    {totalPages > 0 ? `/${totalPages}` : ''}
-                  </CardDescription>
-                </div>
+      <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
+        <Card className="border-white/10 bg-zinc-900/60 backdrop-blur-xl shadow-xl shadow-black/20">
+          <CardHeader className="px-4 md:px-6 pb-4">
+            <div className="flex items-center justify-between flex-wrap gap-4">
+              <div>
+                <CardTitle className="text-lg font-display">
+                  {debouncedSearchTerm.trim() ? 'Results' : 'All Modpacks'}
+                </CardTitle>
+                <CardDescription className="text-zinc-500">
+                  {totalResults} modpack{totalResults !== 1 ? 's' : ''} · Page {currentPage + 1}
+                  {totalPages > 0 ? `/${totalPages}` : ''}
+                </CardDescription>
+              </div>
                 <div className="flex items-center gap-2">
                   <Button
                     variant="outline"
@@ -225,7 +225,6 @@ function ModpacksPage() {
             </CardContent>
           </Card>
         </div>
-      )}
 
       {/* Install Panel */}
       {selectedModpackId && (

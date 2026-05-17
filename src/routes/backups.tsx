@@ -83,7 +83,7 @@ function BackupsPage() {
   const [deleteTarget, setDeleteTarget] = useState<BackupFile | null>(null)
   const [restoreTarget, setRestoreTarget] = useState<BackupFile | null>(null)
   const [versionTarget, setVersionTarget] = useState<BackupFile | null>(null)
-  const [restoreVersionId, setRestoreVersionId] = useState('20314')
+  const [restoreVersionId, setRestoreVersionId] = useState('')
 
   const backupsQuery = useQuery({
     queryKey: ['backups-list'],
@@ -482,13 +482,32 @@ function BackupsPage() {
                         </div>
                       </div>
                     </div>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800"
-                    >
-                      <Download className="h-4 w-4" />
-                    </Button>
+                    {revision.downloadUrl ? (
+                      <a
+                        href={revision.downloadUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        title="Télécharger cette version"
+                      >
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800"
+                        >
+                          <Download className="h-4 w-4" />
+                        </Button>
+                      </a>
+                    ) : (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-zinc-400 opacity-30 cursor-not-allowed"
+                        disabled
+                        title="URL de téléchargement indisponible"
+                      >
+                        <Download className="h-4 w-4" />
+                      </Button>
+                    )}
                   </div>
                 ))}
               </div>

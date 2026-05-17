@@ -230,38 +230,16 @@ export const searchModpacks = createServerFn({ method: 'GET' })
     const query = (data?.query ?? '').trim().toLowerCase()
     const pageId = Number.isInteger(data?.pageId) && (data?.pageId ?? 0) >= 0 ? (data?.pageId ?? 0) : 0
 
-    if (!query) {
-      return {
-        modpacks: [],
-        totalCount: 0,
-        pageId,
-        pageSize: MODPACK_SEARCH_PAGE_SIZE,
-      }
-    }
-
     if (query.length > MAX_QUERY_LENGTH || !isSafeText(query)) {
       throw new Error('Invalid modpack search query')
     }
 
     const catalog = await loadCatalogFromGist()
 
-    // Filter modpacks by search query (case-insensitive name match)
     const filtered = catalog.modpacks.filter((modpack) => {
-      const name = (modpack.name ?? '').toLowerCase()
-
-      if (!name.includes(query)) {
-        return false
-      }
-
-      // Validate ID and name
-      if (!SAFE_ID_PATTERN.test(String(modpack.id))) {
-        return false
-      }
-
-      if (modpack.name.length > MAX_MODPACK_NAME_LENGTH || !isSafeText(modpack.name)) {
-        return false
-      }
-
+      if (!SAFE_ID_PATTERN.test(String(modpack.id))) return false
+      if (modpack.name.length > MAX_MODPACK_NAME_LENGTH || !isSafeText(modpack.name)) return false
+      if (query && !(modpack.name ?? '').toLowerCase().includes(query)) return false
       return true
     })
 
@@ -314,7 +292,7 @@ export const triggerModpackSwitch = createServerFn({ method: 'POST' })
       throw new Error('Invalid modpack name')
     }
 
-    if (!SAFE_ID_PATTERN.test(modpackVersionId)) {
+    if (modpackVersionId && !SAFE_ID_PATTERN.test(modpackVersionId)) {
       throw new Error('Invalid modpack version id')
     }
 

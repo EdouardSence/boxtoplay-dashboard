@@ -1,5 +1,32 @@
 import { createServerFn } from '@tanstack/react-start'
 
+// =============================================================================
+// Gist state types (only safe fields — no cookies, no FTP credentials)
+// =============================================================================
+
+interface GistStateAccount {
+  email?: string
+  server_id?: string | number
+}
+
+interface GistStateRaw {
+  active_account_index?: number
+  current_server_id?: string | number
+  modpack_name?: string
+  modpack?: string
+  modpack_version_id?: string | number
+  catalog_last_updated?: string
+  accounts?: GistStateAccount[]
+}
+
+export interface RotationState {
+  activeAccountEmail: string
+  activeServerId: string
+  modpackName: string
+  modpackVersionId: string
+  catalogLastUpdated: string | null
+}
+
 interface MinecraftStatusApiResponse {
   online: boolean
   players?: {
@@ -99,4 +126,34 @@ export const getRecentWorkflows = createServerFn({ method: 'GET' }).handler(asyn
     conclusion: run.conclusion,
     htmlUrl: run.html_url,
   }))
+})
+
+export const getGistState = createServerFn({ method: 'GET' }).handler(async (): Promise<RotationState> => {
+  const token = process.env.GH_TOKEN
+  const gistId = (process.env.GIST_ID ?? '').trim()
+
+  if (!token || !gistId) {
+    throw new Error('Missing Gist configuration (GH_TOKEN or GIST_ID)')
+  }
+
+  const rawUrl = `https://gist.githubusercontent.com/raw/${gistId}/boxtoplay.json`
+  const response = await fetch(rawUrl, {
+    headers: { Authorization: `Bearer ${token}`, accept: 'application/json' },
+  })
+
+  if (!response.ok) {
+    throw new Error(`Failed to fetch Gist state: ${response.status}`)
+  }
+
+  const state = (await response.json()) as GistStateRaw
+  const idx = state.active_account_index ?? 0
+  const activeAccount = state.accounts?.[idx]
+
+  return {
+    activeAccountEmail: activeAccount?.email ?? '—',
+    activeServerId: String(state.current_server_id ?? activeAccount?.server_id ?? '—'),
+    modpackName: state.modpack_name ?? state.modpack ?? '—',
+    modpackVersionId: String(state.modpack_version_id ?? '—'),
+    catalogLastUpdated: state.catalog_last_updated ?? null,
+  }
 })

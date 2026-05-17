@@ -5,7 +5,7 @@ import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { formatWorkflowState, getWorkflowTone } from '@/lib/dashboard'
-import { getMinecraftStatus, getRecentWorkflows } from '@/server/dashboard'
+import { getMinecraftStatus, getRecentWorkflows, getGistState } from '@/server/dashboard'
 
 export const Route = createFileRoute('/')({
   component: DashboardPage,
@@ -21,6 +21,13 @@ function DashboardPage() {
   const workflowsQuery = useQuery({
     queryKey: ['recent-workflows'],
     queryFn: () => getRecentWorkflows(),
+    refetchInterval: 30_000,
+  })
+
+  const gistStateQuery = useQuery({
+    queryKey: ['gist-state'],
+    queryFn: () => getGistState(),
+    refetchInterval: 60_000,
   })
 
   return (
@@ -32,8 +39,39 @@ function DashboardPage() {
 
       <Card>
         <CardHeader>
+          <CardTitle>Rotation State</CardTitle>
+          <CardDescription>Current worker state from Gist · auto refresh every 60s</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {gistStateQuery.isPending ? (
+            <p className="text-sm text-zinc-400">Loading rotation state...</p>
+          ) : gistStateQuery.isError ? (
+            <p className="text-sm text-rose-300">Unable to fetch Gist state. Check GH_TOKEN and GIST_ID.</p>
+          ) : (
+            <div className="grid grid-cols-2 gap-x-8 gap-y-2 text-sm">
+              <div className="text-zinc-400">Active account</div>
+              <div className="text-zinc-100 font-mono">{gistStateQuery.data.activeAccountEmail}</div>
+              <div className="text-zinc-400">Server ID</div>
+              <div className="text-zinc-100 font-mono">{gistStateQuery.data.activeServerId}</div>
+              <div className="text-zinc-400">Modpack</div>
+              <div className="text-zinc-100">{gistStateQuery.data.modpackName}</div>
+              <div className="text-zinc-400">Modpack version</div>
+              <div className="text-zinc-100 font-mono">{gistStateQuery.data.modpackVersionId}</div>
+              <div className="text-zinc-400">Catalog updated</div>
+              <div className="text-zinc-100 font-mono">
+                {gistStateQuery.data.catalogLastUpdated
+                  ? new Date(gistStateQuery.data.catalogLastUpdated).toLocaleString()
+                  : '—'}
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
           <CardTitle>Live Server Status</CardTitle>
-          <CardDescription>mc319.boxtoplay.com · auto refresh every 60s</CardDescription>
+          <CardDescription>orny.boxtoplay.com · auto refresh every 60s</CardDescription>
         </CardHeader>
         <CardContent>
           {statusQuery.isPending ? (
