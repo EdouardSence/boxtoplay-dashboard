@@ -1,5 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
+import { Activity, RefreshCw, Terminal } from 'lucide-react'
 
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -30,109 +31,161 @@ function DashboardPage() {
     refetchInterval: 60_000,
   })
 
+  const isOnline = statusQuery.data?.online
+  const playersOnline = statusQuery.data?.playersOnline ?? 0
+  const playersMax = statusQuery.data?.playersMax ?? 0
+
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Dashboard</h1>
-        <p className="text-sm text-zinc-400">Operational overview for your automated Minecraft infrastructure.</p>
+    <div className="space-y-8">
+      {/* Header */}
+      <div className="flex items-center gap-4">
+        <div className="p-3 rounded-xl bg-zinc-900/80 border border-zinc-800">
+          <Activity className="h-6 w-6 text-orange-400" />
+        </div>
+        <div>
+          <h1 className="text-2xl md:text-3xl font-bold text-zinc-100 font-display tracking-tight">Dashboard</h1>
+          <p className="text-sm text-zinc-500 mt-1">Operational overview · automated rotation</p>
+        </div>
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Rotation State</CardTitle>
-          <CardDescription>Current worker state from Gist · auto refresh every 60s</CardDescription>
-        </CardHeader>
-        <CardContent>
-          {gistStateQuery.isPending ? (
-            <p className="text-sm text-zinc-400">Loading rotation state...</p>
-          ) : gistStateQuery.isError ? (
-            <p className="text-sm text-rose-300">Unable to fetch Gist state. Check GH_TOKEN and GIST_ID.</p>
-          ) : (
-            <div className="grid grid-cols-2 gap-x-8 gap-y-2 text-sm">
-              <div className="text-zinc-400">Active account</div>
-              <div className="text-zinc-100 font-mono">{gistStateQuery.data.activeAccountEmail}</div>
-              <div className="text-zinc-400">Server ID</div>
-              <div className="text-zinc-100 font-mono">{gistStateQuery.data.activeServerId}</div>
-              <div className="text-zinc-400">Modpack</div>
-              <div className="text-zinc-100">{gistStateQuery.data.modpackName}</div>
-              <div className="text-zinc-400">Modpack version</div>
-              <div className="text-zinc-100 font-mono">{gistStateQuery.data.modpackVersionId}</div>
-              <div className="text-zinc-400">Catalog updated</div>
-              <div className="text-zinc-100 font-mono">
-                {gistStateQuery.data.catalogLastUpdated
-                  ? new Date(gistStateQuery.data.catalogLastUpdated).toLocaleString()
-                  : '—'}
-              </div>
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Live Server Status</CardTitle>
-          <CardDescription>orny.boxtoplay.com · auto refresh every 60s</CardDescription>
-        </CardHeader>
-        <CardContent>
+      {/* Hero: Server Status */}
+      <Card className="border-zinc-800 bg-zinc-900/40 backdrop-blur-xl shadow-xl shadow-black/20 overflow-hidden">
+        <CardContent className="p-6 md:p-8">
           {statusQuery.isPending ? (
-            <p className="text-sm text-zinc-400">Loading server status...</p>
-          ) : statusQuery.isError ? (
-            <p className="text-sm text-rose-300">Unable to fetch server status.</p>
-          ) : (
-            <div className="space-y-3">
-              <div className="flex items-center gap-2 text-sm">
-                <span>Status:</span>
-                <Badge variant={statusQuery.data.online ? 'success' : 'danger'}>
-                  {statusQuery.data.online ? 'Online 🟢' : 'Offline 🔴'}
-                </Badge>
+            <div className="flex items-center gap-4">
+              <div className="skeleton w-16 h-16 rounded-full" />
+              <div className="space-y-2">
+                <div className="skeleton h-6 w-32" />
+                <div className="skeleton h-4 w-48" />
               </div>
-              <p className="text-sm text-zinc-300">
-                Players: <span className="font-medium text-zinc-100">{statusQuery.data.playersOnline}</span> / {statusQuery.data.playersMax}
-              </p>
-              <p className="text-sm text-zinc-300">MOTD: {statusQuery.data.motd}</p>
+            </div>
+          ) : statusQuery.isError ? (
+            <p className="text-sm text-rose-400">Unable to fetch server status.</p>
+          ) : (
+            <div className="flex flex-col sm:flex-row sm:items-center gap-6">
+              {/* Status indicator */}
+              <div className="relative shrink-0 flex items-center justify-center w-20 h-20">
+                <span className={`absolute inset-0 rounded-full ${isOnline ? 'ping-slow bg-emerald-500/20' : 'bg-rose-500/10'}`} />
+                <span className={`relative w-14 h-14 rounded-full flex items-center justify-center ${isOnline ? 'bg-emerald-500/15 glow-green' : 'bg-rose-500/10 glow-red'}`}>
+                  <span className={`w-5 h-5 rounded-full status-pulse ${isOnline ? 'bg-emerald-400' : 'bg-rose-500'}`} />
+                </span>
+              </div>
+
+              {/* Main stats */}
+              <div className="flex-1 min-w-0">
+                <div className="flex items-baseline gap-3 flex-wrap">
+                  <span className={`text-3xl md:text-4xl font-bold font-display ${isOnline ? 'text-emerald-400' : 'text-rose-400'}`}>
+                    {isOnline ? 'Online' : 'Offline'}
+                  </span>
+                  <span className="text-sm text-zinc-500 font-mono">orny.boxtoplay.com</span>
+                </div>
+                {isOnline && (
+                  <div className="mt-2 flex items-baseline gap-1.5">
+                    <span className="text-2xl font-bold text-orange-400 font-display">{playersOnline}</span>
+                    <span className="text-zinc-500 text-sm">/ {playersMax} players</span>
+                  </div>
+                )}
+                {statusQuery.data?.motd && (
+                  <p className="mt-2 text-sm text-zinc-500 font-mono truncate">{statusQuery.data.motd}</p>
+                )}
+              </div>
             </div>
           )}
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Recent Actions</CardTitle>
-          <CardDescription>Latest GitHub Actions workflow runs from your BoxToPlay repository.</CardDescription>
+      {/* Rotation state */}
+      <Card className="border-zinc-800 bg-zinc-900/40 backdrop-blur-xl shadow-xl shadow-black/20">
+        <CardHeader className="px-4 md:px-6 pb-4">
+          <div className="flex items-center gap-2">
+            <RefreshCw className="h-4 w-4 text-orange-400" />
+            <CardTitle className="text-base font-display">Rotation State</CardTitle>
+          </div>
+          <CardDescription className="text-zinc-600">Current worker state from Gist · refresh every 60s</CardDescription>
         </CardHeader>
-        <CardContent>
-          {workflowsQuery.isPending ? (
-            <p className="text-sm text-zinc-400">Loading workflow activity...</p>
-          ) : workflowsQuery.isError ? (
-            <p className="text-sm text-rose-300">Unable to fetch workflow activity. Check GH_TOKEN and GITHUB_REPO.</p>
+        <CardContent className="px-4 md:px-6 pb-6">
+          {gistStateQuery.isPending ? (
+            <div className="space-y-3">
+              {[1, 2, 3, 4].map((i) => (
+                <div key={i} className="grid grid-cols-2 gap-4">
+                  <div className="skeleton h-4 w-28" />
+                  <div className="skeleton h-4 w-40" />
+                </div>
+              ))}
+            </div>
+          ) : gistStateQuery.isError ? (
+            <p className="text-sm text-rose-400">Unable to fetch Gist state. Check GH_TOKEN and GIST_ID.</p>
           ) : (
-            <Table>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {[
+                { label: 'Active account', value: gistStateQuery.data.activeAccountEmail, mono: true },
+                { label: 'Server ID', value: gistStateQuery.data.activeServerId, mono: true },
+                { label: 'Modpack', value: gistStateQuery.data.modpackName, mono: false },
+                { label: 'Version ID', value: gistStateQuery.data.modpackVersionId, mono: true },
+                {
+                  label: 'Catalog updated',
+                  value: gistStateQuery.data.catalogLastUpdated
+                    ? new Date(gistStateQuery.data.catalogLastUpdated).toLocaleString()
+                    : '—',
+                  mono: true,
+                },
+              ].map(({ label, value, mono }) => (
+                <div key={label} className="rounded-lg bg-zinc-950/50 border border-zinc-800/60 px-4 py-3">
+                  <p className="text-[10px] uppercase tracking-widest text-zinc-600 font-mono mb-1">{label}</p>
+                  <p className={`text-sm text-zinc-200 truncate ${mono ? 'font-mono' : 'font-medium'}`}>{value ?? '—'}</p>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Recent Actions */}
+      <Card className="border-zinc-800 bg-zinc-900/40 backdrop-blur-xl shadow-xl shadow-black/20">
+        <CardHeader className="px-4 md:px-6 pb-4">
+          <div className="flex items-center gap-2">
+            <Terminal className="h-4 w-4 text-orange-400" />
+            <CardTitle className="text-base font-display">Recent Actions</CardTitle>
+          </div>
+          <CardDescription className="text-zinc-600">Latest GitHub Actions workflow runs</CardDescription>
+        </CardHeader>
+        <CardContent className="px-4 md:px-6 pb-6">
+          {workflowsQuery.isPending ? (
+            <div className="space-y-2">
+              {[1, 2, 3].map((i) => (
+                <div key={i} className="skeleton h-10 w-full rounded-lg" />
+              ))}
+            </div>
+          ) : workflowsQuery.isError ? (
+            <p className="text-sm text-rose-400">Unable to fetch workflow activity. Check GH_TOKEN and GITHUB_REPO.</p>
+          ) : (
+            <Table className="table-mobile-card">
               <TableHeader>
-                <TableRow>
-                  <TableHead>Workflow</TableHead>
-                  <TableHead>Date</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Logs</TableHead>
+                <TableRow className="border-zinc-800 hover:bg-transparent">
+                  <TableHead className="text-zinc-500 font-mono text-[10px] uppercase tracking-widest">Workflow</TableHead>
+                  <TableHead className="text-zinc-500 font-mono text-[10px] uppercase tracking-widest">Date</TableHead>
+                  <TableHead className="text-zinc-500 font-mono text-[10px] uppercase tracking-widest">Status</TableHead>
+                  <TableHead className="text-zinc-500 font-mono text-[10px] uppercase tracking-widest">Logs</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {workflowsQuery.data.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={4} className="text-zinc-400">
+                  <TableRow className="border-zinc-800">
+                    <TableCell colSpan={4} className="text-zinc-500 text-sm py-8 text-center">
                       No workflow runs found.
                     </TableCell>
                   </TableRow>
                 ) : (
                   workflowsQuery.data.map((run) => (
-                    <TableRow key={run.id}>
-                      <TableCell>{run.name}</TableCell>
-                      <TableCell>{new Date(run.createdAt).toLocaleString()}</TableCell>
-                      <TableCell>
+                    <TableRow key={run.id} className="border-zinc-800/60 hover:bg-zinc-900/40 transition-colors">
+                      <TableCell data-label="Workflow" className="text-sm text-zinc-300 font-medium">{run.name}</TableCell>
+                      <TableCell data-label="Date" className="text-xs text-zinc-500 font-mono">{new Date(run.createdAt).toLocaleString()}</TableCell>
+                      <TableCell data-label="Status">
                         <Badge variant={getWorkflowTone(run.status, run.conclusion)}>{formatWorkflowState(run.status, run.conclusion)}</Badge>
                       </TableCell>
-                      <TableCell>
-                        <a href={run.htmlUrl} target="_blank" rel="noreferrer" className="text-sm text-sky-300 hover:text-sky-200">
-                          Open logs
+                      <TableCell data-label="Logs">
+                        <a href={run.htmlUrl} target="_blank" rel="noreferrer" className="text-xs text-orange-400 hover:text-orange-300 font-mono transition-colors">
+                          Open ↗
                         </a>
                       </TableCell>
                     </TableRow>

@@ -160,8 +160,8 @@ function BackupsPage() {
 
       {/* Header */}
       <div className="flex items-center gap-4">
-        <div className="p-3 rounded-xl bg-zinc-900/80 border border-white/10">
-          <DatabaseBackup className="h-6 w-6 text-zinc-100" />
+        <div className="p-3 rounded-xl bg-zinc-900/80 border border-zinc-800">
+          <DatabaseBackup className="h-6 w-6 text-orange-400" />
         </div>
         <div>
           <h1 className="text-2xl md:text-3xl font-bold text-zinc-100 font-display tracking-tight">Backups</h1>
@@ -171,35 +171,35 @@ function BackupsPage() {
 
       {/* Stats Section - Calculated from backup files */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <Card className="border-white/10 bg-zinc-900/60 backdrop-blur-xl shadow-xl shadow-black/20">
+        <Card className="border-zinc-800 bg-zinc-900/40 backdrop-blur-xl shadow-xl shadow-black/20">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium text-zinc-400">Total des Archives</CardTitle>
             <Archive className="h-4 w-4 text-zinc-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-zinc-100 font-display">{stats.totalArchives}</div>
+            <div className="text-2xl font-bold text-orange-400 font-display">{stats.totalArchives}</div>
             <div className="text-xs text-zinc-500 mt-1">fichiers de sauvegarde</div>
           </CardContent>
         </Card>
 
-        <Card className="border-white/10 bg-zinc-900/60 backdrop-blur-xl shadow-xl shadow-black/20">
+        <Card className="border-zinc-800 bg-zinc-900/40 backdrop-blur-xl shadow-xl shadow-black/20">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium text-zinc-400">Poids des Sauvegardes</CardTitle>
             <HardDrive className="h-4 w-4 text-zinc-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-zinc-100 font-mono">{formatBytes(stats.totalSize)}</div>
+            <div className="text-2xl font-bold text-orange-400 font-mono">{formatBytes(stats.totalSize)}</div>
             <div className="text-xs text-zinc-500 mt-1">espace utilisé par les backups</div>
           </CardContent>
         </Card>
 
-        <Card className="border-white/10 bg-zinc-900/60 backdrop-blur-xl shadow-xl shadow-black/20">
+        <Card className="border-zinc-800 bg-zinc-900/40 backdrop-blur-xl shadow-xl shadow-black/20">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium text-zinc-400">Dernière Activité</CardTitle>
             <Clock className="h-4 w-4 text-zinc-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-zinc-100 font-mono">
+            <div className="text-2xl font-bold text-orange-400 font-mono">
               {stats.latestDate ? formatDateShort(stats.latestDate) : '—'}
             </div>
             <div className="text-xs text-zinc-500 mt-1">dernière sauvegarde</div>
@@ -260,7 +260,7 @@ function BackupsPage() {
                     >
                       <Button
                         variant="outline"
-                        className="border-white/10 text-zinc-300 hover:bg-zinc-800 hover:border-white/20 transition-all duration-300"
+                        className="border-white/10 text-zinc-300 hover:bg-zinc-800 hover:border-zinc-700 transition-all duration-300"
                       >
                         <Download className="h-4 w-4 mr-2" />
                         Télécharger
@@ -279,7 +279,7 @@ function BackupsPage() {
                     </DropdownMenuTrigger>
                     <DropdownMenuContent
                       align="end"
-                      className="bg-zinc-900/95 backdrop-blur-xl border-white/10 text-zinc-100"
+                      className="bg-zinc-900/95 backdrop-blur-xl border-zinc-800 text-zinc-100"
                     >
                       <DropdownMenuItem
                         className="text-rose-400 focus:text-rose-400 focus:bg-rose-950/30 cursor-pointer transition-colors duration-300"
@@ -311,7 +311,7 @@ function BackupsPage() {
               placeholder="Rechercher..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="pl-9 h-9 bg-zinc-950/50 border-white/10 text-zinc-100 placeholder:text-zinc-500 focus:border-zinc-700 focus:ring-0 transition-all duration-300 text-sm"
+              className="pl-9 h-9 bg-zinc-950/50 border-zinc-800 text-zinc-100 placeholder:text-zinc-600 focus:border-zinc-700 focus:ring-0 transition-all duration-300 text-sm"
             />
           </div>
         </div>
@@ -321,7 +321,7 @@ function BackupsPage() {
             {[1, 2, 3].map((i) => (
               <Card
                 key={i}
-                className="border-white/10 bg-zinc-900/40 backdrop-blur-xl shadow-xl shadow-black/20"
+                className="border-zinc-800 bg-zinc-900/40 backdrop-blur-xl shadow-xl shadow-black/20"
               >
                 <CardContent className="p-5 space-y-4">
                   <div className="skeleton h-6 w-3/4" />
@@ -342,7 +342,7 @@ function BackupsPage() {
         )}
 
         {!backupsQuery.isPending && !backupsQuery.isError && filteredTimeMachine.length === 0 && (
-          <div className="flex flex-col items-center justify-center py-16 text-center rounded-xl bg-zinc-900/20 border border-white/5">
+          <div className="flex flex-col items-center justify-center py-16 text-center rounded-xl bg-zinc-900/20 border border-zinc-800/40">
             <div className="p-4 rounded-full bg-zinc-800/50">
               <Package className="h-8 w-8 text-zinc-600" />
             </div>
@@ -356,11 +356,11 @@ function BackupsPage() {
             {filteredTimeMachine.map((backup: BackupFile, index: number) => (
               <Card
                 key={backup.id}
-                className="group relative overflow-hidden border-white/10 bg-zinc-900/40 backdrop-blur-xl shadow-xl shadow-black/20 hover:border-emerald-500/30 hover:shadow-[0_0_15px_rgba(16,185,129,0.1)] transition-all duration-300"
+                className="group relative overflow-hidden border-zinc-800/60 bg-zinc-900/40 backdrop-blur-xl shadow-xl shadow-black/20 hover:border-zinc-700 hover:shadow-[0_8px_32px_rgba(0,0,0,0.5)] transition-all duration-300"
                 style={{ animationDelay: `${index * 50}ms` }}
               >
                 {/* Top glow border */}
-                <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-emerald-500/0 via-emerald-500/50 to-emerald-500/0 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+                <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-orange-500/0 via-orange-500/40 to-orange-500/0 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
                 
                 <CardContent className="p-5 space-y-4">
                   {/* Modpack Title */}
@@ -397,7 +397,7 @@ function BackupsPage() {
                       </DropdownMenuTrigger>
                       <DropdownMenuContent
                         align="end"
-                        className="bg-zinc-900/95 backdrop-blur-xl border-white/10 text-zinc-100"
+                        className="bg-zinc-900/95 backdrop-blur-xl border-zinc-800 text-zinc-100"
                       >
                         {backup.webContentLink && (
                           <DropdownMenuItem asChild>
@@ -412,7 +412,7 @@ function BackupsPage() {
                             </a>
                           </DropdownMenuItem>
                         )}
-                        <DropdownMenuSeparator className="bg-white/10" />
+                        <DropdownMenuSeparator className="bg-zinc-800" />
                         <DropdownMenuItem
                           className="text-rose-400 focus:text-rose-400 focus:bg-rose-950/30 cursor-pointer transition-colors duration-300"
                           onSelect={() => setDeleteTarget(backup)}
@@ -432,7 +432,7 @@ function BackupsPage() {
 
       {/* Version Management Dialog */}
       <Dialog open={!!versionTarget} onOpenChange={(open) => !open && setVersionTarget(null)}>
-        <DialogContent className="bg-zinc-950/95 backdrop-blur-xl border-white/10 max-w-2xl">
+        <DialogContent className="bg-zinc-950/95 backdrop-blur-xl border-zinc-800 max-w-2xl">
           <DialogHeader>
             <DialogTitle className="text-zinc-100 font-display flex items-center gap-2">
               <History className="h-5 w-5 text-amber-400" />
@@ -467,7 +467,7 @@ function BackupsPage() {
                 {revisionsQuery.data.map((revision: FileRevision, idx: number) => (
                   <div
                     key={revision.id}
-                    className="flex items-center justify-between p-3 rounded-lg bg-zinc-900/50 border border-white/5 hover:border-white/10 transition-colors"
+                    className="flex items-center justify-between p-3 rounded-lg bg-zinc-900/50 border border-zinc-800/60 hover:border-zinc-700 transition-colors"
                   >
                     <div className="flex items-center gap-3">
                       <div className="w-8 h-8 rounded-full bg-amber-500/10 flex items-center justify-center">
@@ -518,7 +518,7 @@ function BackupsPage() {
 
       {/* Delete Confirmation Dialog */}
       <AlertDialog open={!!deleteTarget} onOpenChange={(open) => !open && setDeleteTarget(null)}>
-        <AlertDialogContent className="bg-zinc-950/95 backdrop-blur-xl border-white/10">
+        <AlertDialogContent className="bg-zinc-950/95 backdrop-blur-xl border-zinc-800">
           <AlertDialogHeader>
             <AlertDialogTitle className="text-zinc-100 font-display">Supprimer cette sauvegarde ?</AlertDialogTitle>
             <AlertDialogDescription className="text-zinc-400">
@@ -526,7 +526,7 @@ function BackupsPage() {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel className="bg-zinc-900 text-zinc-100 hover:bg-zinc-800 border-white/10 transition-all duration-300">
+            <AlertDialogCancel className="bg-zinc-900 text-zinc-100 hover:bg-zinc-800 border-zinc-800 transition-all duration-300">
               Annuler
             </AlertDialogCancel>
             <AlertDialogAction
@@ -542,7 +542,7 @@ function BackupsPage() {
 
       {/* Restore Confirmation Dialog */}
       <AlertDialog open={!!restoreTarget} onOpenChange={(open) => !open && setRestoreTarget(null)}>
-        <AlertDialogContent className="bg-zinc-950/95 backdrop-blur-xl border-white/10">
+        <AlertDialogContent className="bg-zinc-950/95 backdrop-blur-xl border-zinc-800">
           <AlertDialogHeader>
             <AlertDialogTitle className="text-zinc-100 font-display flex items-center gap-2">
               <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
@@ -558,13 +558,13 @@ function BackupsPage() {
               <Input
                 value={restoreVersionId}
                 onChange={(e) => setRestoreVersionId(e.target.value)}
-                className="mt-2 bg-zinc-950/50 border-white/10 text-zinc-100 font-mono focus:border-emerald-500/50 focus:ring-0 transition-all duration-300"
+                className="mt-2 bg-zinc-950/50 border-zinc-800 text-zinc-100 font-mono focus:border-orange-500/50 focus:ring-0 transition-all duration-300"
                 placeholder="ex: 20314"
               />
             </div>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel className="bg-zinc-900 text-zinc-100 hover:bg-zinc-800 border-white/10 transition-all duration-300">
+            <AlertDialogCancel className="bg-zinc-900 text-zinc-100 hover:bg-zinc-800 border-zinc-800 transition-all duration-300">
               Annuler
             </AlertDialogCancel>
             <AlertDialogAction

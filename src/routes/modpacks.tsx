@@ -118,7 +118,7 @@ function ModpacksPage() {
       </div>
 
       {/* Search Card */}
-      <Card className="border-white/10 bg-zinc-900/60 backdrop-blur-xl shadow-xl shadow-black/20">
+      <Card className="border-zinc-800 bg-zinc-900/40 backdrop-blur-xl shadow-xl shadow-black/20">
         <CardContent className="p-4 md:p-6">
           <div className="relative">
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-zinc-500" />
@@ -127,7 +127,7 @@ function ModpacksPage() {
               aria-label="Search modpacks"
               value={searchTerm}
               onChange={(event) => setSearchTerm(event.target.value)}
-              className="pl-12 h-12 bg-zinc-950/50 border-white/10 text-zinc-100 placeholder:text-zinc-500 focus:border-zinc-700 focus:ring-0 transition-all duration-300"
+              className="pl-12 h-12 bg-zinc-950/50 border-zinc-800 text-zinc-100 placeholder:text-zinc-600 focus:border-zinc-700 focus:ring-0 transition-all duration-300"
             />
           </div>
         </CardContent>
@@ -135,14 +135,14 @@ function ModpacksPage() {
 
       {/* Results */}
       <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
-        <Card className="border-white/10 bg-zinc-900/60 backdrop-blur-xl shadow-xl shadow-black/20">
+        <Card className="border-zinc-800 bg-zinc-900/40 backdrop-blur-xl shadow-xl shadow-black/20">
           <CardHeader className="px-4 md:px-6 pb-4">
             <div className="flex items-center justify-between flex-wrap gap-4">
               <div>
                 <CardTitle className="text-lg font-display">
                   {debouncedSearchTerm.trim() ? 'Results' : 'All Modpacks'}
                 </CardTitle>
-                <CardDescription className="text-zinc-500">
+                <CardDescription className="text-zinc-600">
                   {totalResults} modpack{totalResults !== 1 ? 's' : ''} · Page {currentPage + 1}
                   {totalPages > 0 ? `/${totalPages}` : ''}
                 </CardDescription>
@@ -153,7 +153,7 @@ function ModpacksPage() {
                     size="sm"
                     disabled={!canGoToPreviousPage || searchQuery.isFetching}
                     onClick={() => setCurrentPage((page) => Math.max(0, page - 1))}
-                    className="border-white/10 bg-zinc-900/80 hover:bg-zinc-800 hover:border-white/20 transition-all duration-300"
+                    className="border-zinc-800 bg-zinc-900/80 hover:bg-zinc-800 hover:border-zinc-700 transition-all duration-300"
                   >
                     <ChevronLeft className="h-4 w-4" />
                   </Button>
@@ -162,7 +162,7 @@ function ModpacksPage() {
                     size="sm"
                     disabled={!canGoToNextPage || searchQuery.isFetching}
                     onClick={() => setCurrentPage((page) => page + 1)}
-                    className="border-white/10 bg-zinc-900/80 hover:bg-zinc-800 hover:border-white/20 transition-all duration-300"
+                    className="border-zinc-800 bg-zinc-900/80 hover:bg-zinc-800 hover:border-zinc-700 transition-all duration-300"
                   >
                     <ChevronRight className="h-4 w-4" />
                   </Button>
@@ -210,8 +210,8 @@ function ModpacksPage() {
                         className={`
                           relative overflow-hidden border transition-all duration-300 ease-in-out card-glow
                           ${selectedModpackId === modpack.id
-                            ? 'border-sky-500/50 bg-sky-950/20 shadow-lg shadow-sky-500/10 -translate-y-1'
-                            : 'border-white/5 bg-zinc-950/50 hover:border-white/10 hover:-translate-y-2 hover:shadow-xl hover:shadow-emerald-500/5'
+                            ? 'border-orange-500/40 bg-orange-950/20 shadow-lg shadow-orange-500/10 -translate-y-1'
+                            : 'border-zinc-800/60 bg-zinc-950/50 hover:border-zinc-700 hover:-translate-y-2 hover:shadow-xl hover:shadow-black/40'
                           }
                         `}
                       >
@@ -243,13 +243,13 @@ function ModpacksPage() {
 
       {/* Install Panel */}
       {selectedModpackId && (
-        <Card className="border-white/10 bg-zinc-900/60 backdrop-blur-xl shadow-xl shadow-black/20 animate-in fade-in slide-in-from-bottom-4 duration-500">
+        <Card className="border-zinc-800 bg-zinc-900/40 backdrop-blur-xl shadow-xl shadow-black/20 animate-in fade-in slide-in-from-bottom-4 duration-500">
           <CardHeader className="px-4 md:px-6">
             <CardTitle className="text-lg font-display flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+              <span className="w-2 h-2 rounded-full bg-orange-500 animate-pulse" />
               Install on Server
             </CardTitle>
-            <CardDescription className="text-zinc-400">
+            <CardDescription className="text-zinc-500">
               <span className="text-zinc-300 font-medium">{selectedModpackName}</span>
               <span className="text-zinc-500 font-mono text-xs ml-2">(ID: {selectedModpackId})</span>
             </CardDescription>
@@ -279,8 +279,8 @@ function ModpacksPage() {
                       onClick={() => setSelectedVersionId(version.id)}
                       className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-all duration-200 ${
                         selectedVersionId === version.id
-                          ? 'bg-sky-500/20 border border-sky-500/50 text-sky-100'
-                          : 'bg-zinc-900/50 border border-white/5 text-zinc-300 hover:border-white/10 hover:bg-zinc-800/50'
+                          ? 'bg-orange-500/15 border border-orange-500/40 text-orange-100'
+                          : 'bg-zinc-900/50 border border-zinc-800/60 text-zinc-400 hover:border-zinc-700 hover:bg-zinc-800/50 hover:text-zinc-200'
                       }`}
                     >
                       <span className="font-medium">{version.versionName}</span>
@@ -297,7 +297,7 @@ function ModpacksPage() {
               disabled={!canDispatchWorkflow}
               aria-label="Install on Server. Dispatches workflow."
               onClick={() => installMutation.mutate()}
-              className="w-full sm:w-auto bg-zinc-100 hover:bg-zinc-200 text-zinc-950 font-medium transition-all duration-300 hover:shadow-lg hover:shadow-zinc-100/10"
+              className="w-full sm:w-auto bg-orange-500 hover:bg-orange-400 text-white font-medium transition-all duration-300 hover:shadow-lg hover:shadow-orange-500/20"
             >
               {installMutation.isPending ? (
                 <span className="inline-flex items-center gap-2">
