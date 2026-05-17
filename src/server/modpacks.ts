@@ -261,6 +261,50 @@ export const searchModpacks = createServerFn({ method: 'GET' })
     }
   })
 
+// =============================================================================
+// Versions cache (modpacks_versions.json Gist file, separate from catalog)
+// =============================================================================
+
+const VERSIONS_CACHE_TTL_MS = 60 * 60 * 1000 // 1 hour (versions change rarely)
+
+let versionsCache: { data: Record<string, ModpackVersion[]>; expiresAt: number } | null = null
+
+const loadVersionsFromGist = async (): Promise<Record<string, ModpackVersion[]>> => {
+  if (versionsCache && versionsCache.expiresAt > Date.now()) {
+    return versionsCache.data
+  }
+
+  const token = process.env.GH_TOKEN
+  const gistId = (process.env.GIST_ID ?? '').trim()
+  if (!token || !gistId) throw new Error('Missing Gist configuration')
+
+  const response = await fetchWithTimeout(`https://gist.githubusercontent.com/raw/${gistId}/modpacks_versions.json`, {
+    headers: { Authorization: `Bearer ${token}`, accept: 'application/json' },
+  })
+
+  if (!response.ok) throw new Error(`Failed to load versions from Gist: ${response.status}`)
+
+  const raw = (await response.json()) as {
+    updated_at?: string
+    versions: Record<string, Array<{ id: string; version_name: string; minecraft_version?: string | null }>>
+  }
+
+  const data: Record<string, ModpackVersion[]> = {}
+  for (const [packId, versions] of Object.entries(raw.versions ?? {})) {
+    data[packId] = versions
+      .filter((v) => v.id && v.version_name)
+      .map((v) => ({
+        id: v.id,
+        versionName: v.version_name,
+        minecraftVersion: v.minecraft_version ?? null,
+      }))
+  }
+
+  versionsCache = { data, expiresAt: Date.now() + VERSIONS_CACHE_TTL_MS }
+  logModpacks('info', 'Versions loaded from Gist', { packCount: Object.keys(data).length })
+  return data
+}
+
 export const getModpackVersions = createServerFn({ method: 'GET' })
   .inputValidator((data: unknown) => data as { packId?: string })
   .handler(async ({ data }): Promise<ModpackVersion[]> => {
@@ -269,55 +313,8 @@ export const getModpackVersions = createServerFn({ method: 'GET' })
       throw new Error('Invalid pack ID')
     }
 
-    // Fetch session cookie from Gist (BoxToPlay requires auth for versions endpoint)
-    const token = process.env.GH_TOKEN
-    const gistId = (process.env.GIST_ID ?? '').trim()
-    if (!token || !gistId) throw new Error('Missing Gist configuration')
-
-    const gistRes = await fetchWithTimeout(`https://gist.githubusercontent.com/raw/${gistId}/boxtoplay.json`, {
-      headers: { Authorization: `Bearer ${token}`, accept: 'application/json' },
-    })
-    if (!gistRes.ok) throw new Error('Failed to fetch Gist state')
-
-    const state = (await gistRes.json()) as {
-      active_account_index?: number
-      accounts?: Array<{ cookies?: { BOXTOPLAY_SESSION?: string; cf_clearance?: string } }>
-    }
-    const idx = state.active_account_index ?? 0
-    const cookies = state.accounts?.[idx]?.cookies ?? {}
-    const session = cookies.BOXTOPLAY_SESSION ?? ''
-    const cf = cookies.cf_clearance ?? ''
-    if (!session) throw new Error('No BoxToPlay session cookie in Gist state')
-
-    const cookieHeader = cf ? `BOXTOPLAY_SESSION=${session}; cf_clearance=${cf}` : `BOXTOPLAY_SESSION=${session}`
-
-    const res = await fetchWithTimeout(
-      `https://www.boxtoplay.com/minecraft/modpacks/cursemodpacks/versions?packId=${encodeURIComponent(packId)}`,
-      {
-        headers: {
-          Cookie: cookieHeader,
-          'X-Requested-With': 'XMLHttpRequest',
-          Accept: 'application/json',
-          Referer: 'https://www.boxtoplay.com/minecraft/modpacks',
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
-        },
-      }
-    )
-
-    if (!res.ok) throw new Error(`BoxToPlay versions API: ${res.status}`)
-
-    const raw = (await res.json()) as BoxToPlayModpackVersionsResponse | BoxToPlayModpackVersionApi[]
-    const list: BoxToPlayModpackVersionApi[] = Array.isArray(raw)
-      ? raw
-      : ((raw as BoxToPlayModpackVersionsResponse).versions ?? (raw as BoxToPlayModpackVersionsResponse).data ?? [])
-
-    return list
-      .filter((v) => v.id != null && v.version_name)
-      .map((v) => ({
-        id: String(v.id),
-        versionName: v.version_name,
-        minecraftVersion: v.minecraft_version ?? null,
-      }))
+    const allVersions = await loadVersionsFromGist()
+    return allVersions[packId] ?? []
   })
 
 export const triggerModpackSwitch = createServerFn({ method: 'POST' })

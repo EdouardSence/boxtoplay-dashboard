@@ -265,8 +265,8 @@ function ModpacksPage() {
                 </div>
               ) : versionsQuery.isError ? (
                 <p className="text-sm text-rose-400">
-                  Impossible de charger les versions (Cloudflare block probable depuis Vercel).
-                  Vérifiez que le cookie de session est à jour dans le Gist.
+                  Impossible de charger les versions. Le catalog n'a peut-être pas encore
+                  été mis à jour avec les versions (déclencher catalog-update).
                 </p>
               ) : (versionsQuery.data?.length ?? 0) === 0 ? (
                 <p className="text-sm text-zinc-500">Aucune version trouvée.</p>
