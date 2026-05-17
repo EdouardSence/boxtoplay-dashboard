@@ -264,9 +264,60 @@ export const searchModpacks = createServerFn({ method: 'GET' })
 export const getModpackVersions = createServerFn({ method: 'GET' })
   .inputValidator((data: unknown) => data as { packId?: string })
   .handler(async ({ data }): Promise<ModpackVersion[]> => {
-    // Versions are not included in the Gist catalog — the scraper only fetches categories and modpack list.
-    // Users should use the GitHub workflow to select and install modpacks.
-    return []
+    const packId = (data?.packId ?? '').trim()
+    if (!packId || !SAFE_ID_PATTERN.test(packId)) {
+      throw new Error('Invalid pack ID')
+    }
+
+    // Fetch session cookie from Gist (BoxToPlay requires auth for versions endpoint)
+    const token = process.env.GH_TOKEN
+    const gistId = (process.env.GIST_ID ?? '').trim()
+    if (!token || !gistId) throw new Error('Missing Gist configuration')
+
+    const gistRes = await fetchWithTimeout(`https://gist.githubusercontent.com/raw/${gistId}/boxtoplay.json`, {
+      headers: { Authorization: `Bearer ${token}`, accept: 'application/json' },
+    })
+    if (!gistRes.ok) throw new Error('Failed to fetch Gist state')
+
+    const state = (await gistRes.json()) as {
+      active_account_index?: number
+      accounts?: Array<{ cookies?: { BOXTOPLAY_SESSION?: string; cf_clearance?: string } }>
+    }
+    const idx = state.active_account_index ?? 0
+    const cookies = state.accounts?.[idx]?.cookies ?? {}
+    const session = cookies.BOXTOPLAY_SESSION ?? ''
+    const cf = cookies.cf_clearance ?? ''
+    if (!session) throw new Error('No BoxToPlay session cookie in Gist state')
+
+    const cookieHeader = cf ? `BOXTOPLAY_SESSION=${session}; cf_clearance=${cf}` : `BOXTOPLAY_SESSION=${session}`
+
+    const res = await fetchWithTimeout(
+      `https://www.boxtoplay.com/minecraft/modpacks/cursemodpacks/versions?packId=${encodeURIComponent(packId)}`,
+      {
+        headers: {
+          Cookie: cookieHeader,
+          'X-Requested-With': 'XMLHttpRequest',
+          Accept: 'application/json',
+          Referer: 'https://www.boxtoplay.com/minecraft/modpacks',
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+        },
+      }
+    )
+
+    if (!res.ok) throw new Error(`BoxToPlay versions API: ${res.status}`)
+
+    const raw = (await res.json()) as BoxToPlayModpackVersionsResponse | BoxToPlayModpackVersionApi[]
+    const list: BoxToPlayModpackVersionApi[] = Array.isArray(raw)
+      ? raw
+      : ((raw as BoxToPlayModpackVersionsResponse).versions ?? (raw as BoxToPlayModpackVersionsResponse).data ?? [])
+
+    return list
+      .filter((v) => v.id != null && v.version_name)
+      .map((v) => ({
+        id: String(v.id),
+        versionName: v.version_name,
+        minecraftVersion: v.minecraft_version ?? null,
+      }))
   })
 
 export const triggerModpackSwitch = createServerFn({ method: 'POST' })

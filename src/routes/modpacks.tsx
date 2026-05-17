@@ -6,7 +6,7 @@ import { Boxes, Search, ChevronLeft, ChevronRight, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
-import { getModpackCategories, searchModpacks, triggerModpackSwitch } from '@/server/modpacks'
+import { getModpackCategories, searchModpacks, triggerModpackSwitch, getModpackVersions } from '@/server/modpacks'
 
 export const Route = createFileRoute('/modpacks')({
   component: ModpacksPage,
@@ -18,6 +18,7 @@ function ModpacksPage() {
   const [currentPage, setCurrentPage] = React.useState(0)
   const [selectedModpackId, setSelectedModpackId] = React.useState<string | null>(null)
   const [selectedModpackName, setSelectedModpackName] = React.useState<string | null>(null)
+  const [selectedVersionId, setSelectedVersionId] = React.useState<string | null>(null)
   const [toastMessage, setToastMessage] = React.useState<string | null>(null)
 
   const categoriesQuery = useQuery({
@@ -41,7 +42,13 @@ function ModpacksPage() {
     setCurrentPage(0)
     setSelectedModpackId(null)
     setSelectedModpackName(null)
+    setSelectedVersionId(null)
   }, [debouncedSearchTerm])
+
+  // Reset version when modpack changes
+  React.useEffect(() => {
+    setSelectedVersionId(null)
+  }, [selectedModpackId])
 
   // Auto-clear toast
   React.useEffect(() => {
@@ -58,25 +65,33 @@ function ModpacksPage() {
       }),
   })
 
+  const versionsQuery = useQuery({
+    queryKey: ['modpack-versions', selectedModpackId],
+    queryFn: () => getModpackVersions({ data: { packId: selectedModpackId! } }),
+    enabled: !!selectedModpackId,
+    staleTime: 5 * 60_000,
+  })
+
   const installMutation = useMutation({
     mutationFn: async () => {
-      if (!selectedModpackId || !selectedModpackName) return
+      if (!selectedModpackId || !selectedModpackName || !selectedVersionId) return
 
       await triggerModpackSwitch({
         data: {
           modpackName: selectedModpackName,
-          modpackVersionId: '',
+          modpackVersionId: selectedVersionId,
         },
       })
     },
     onSuccess: () => {
-      if (selectedModpackName) {
-        setToastMessage(`Workflow dispatched for ${selectedModpackName}. Check GitHub Actions to select version.`)
+      if (selectedModpackName && selectedVersionId) {
+        const versionName = versionsQuery.data?.find((v) => v.id === selectedVersionId)?.versionName ?? selectedVersionId
+        setToastMessage(`Workflow dispatché pour ${selectedModpackName} v${versionName}.`)
       }
     },
   })
 
-  const canDispatchWorkflow = !!selectedModpackId && !installMutation.isPending
+  const canDispatchWorkflow = !!selectedModpackId && !!selectedVersionId && !installMutation.isPending
   const searchResults = searchQuery.data?.modpacks ?? []
   const totalResults = searchQuery.data?.totalCount ?? 0
   const pageSize = searchQuery.data?.pageSize ?? 20
@@ -240,9 +255,43 @@ function ModpacksPage() {
             </CardDescription>
           </CardHeader>
           <CardContent className="px-4 md:px-6 pb-6 space-y-4">
-            <p className="text-sm text-zinc-400">
-              Select the modpack version in the GitHub Actions workflow after dispatching.
-            </p>
+            {/* Version picker */}
+            <div>
+              <p className="text-sm font-medium text-zinc-300 mb-2">Choisir une version</p>
+              {versionsQuery.isPending ? (
+                <div className="flex items-center gap-2 text-sm text-zinc-400">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Chargement des versions...
+                </div>
+              ) : versionsQuery.isError ? (
+                <p className="text-sm text-rose-400">
+                  Impossible de charger les versions (Cloudflare block probable depuis Vercel).
+                  Vérifiez que le cookie de session est à jour dans le Gist.
+                </p>
+              ) : (versionsQuery.data?.length ?? 0) === 0 ? (
+                <p className="text-sm text-zinc-500">Aucune version trouvée.</p>
+              ) : (
+                <div className="max-h-52 overflow-y-auto space-y-1 pr-1">
+                  {versionsQuery.data!.map((version) => (
+                    <button
+                      key={version.id}
+                      type="button"
+                      onClick={() => setSelectedVersionId(version.id)}
+                      className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-all duration-200 ${
+                        selectedVersionId === version.id
+                          ? 'bg-sky-500/20 border border-sky-500/50 text-sky-100'
+                          : 'bg-zinc-900/50 border border-white/5 text-zinc-300 hover:border-white/10 hover:bg-zinc-800/50'
+                      }`}
+                    >
+                      <span className="font-medium">{version.versionName}</span>
+                      {version.minecraftVersion && (
+                        <span className="ml-2 text-xs text-zinc-500 font-mono">MC {version.minecraftVersion}</span>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
 
             <Button
               disabled={!canDispatchWorkflow}
@@ -256,12 +305,12 @@ function ModpacksPage() {
                   Dispatching...
                 </span>
               ) : (
-                'Dispatch Workflow'
+                'Installer cette version'
               )}
             </Button>
 
             {installMutation.isError && (
-              <p className="text-sm text-rose-400">Failed to start installation. Please retry.</p>
+              <p className="text-sm text-rose-400">Échec du déclenchement du workflow. Réessayez.</p>
             )}
           </CardContent>
         </Card>
