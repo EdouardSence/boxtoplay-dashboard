@@ -1,11 +1,13 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
-import { Activity, RefreshCw, Terminal } from 'lucide-react'
+import { Activity, RefreshCw, Server, Terminal } from 'lucide-react'
 
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { formatExpiry, getRuntimeTone } from '@/lib/btp'
 import { formatWorkflowState, getWorkflowTone } from '@/lib/dashboard'
+import { getServerVitals } from '@/server/btp'
 import { getMinecraftStatus, getRecentWorkflows, getGistState } from '@/server/dashboard'
 
 export const Route = createFileRoute('/')({
@@ -28,6 +30,12 @@ function DashboardPage() {
   const gistStateQuery = useQuery({
     queryKey: ['gist-state'],
     queryFn: () => getGistState(),
+    refetchInterval: 60_000,
+  })
+
+  const vitalsQuery = useQuery({
+    queryKey: ['server-vitals'],
+    queryFn: () => getServerVitals(),
     refetchInterval: 60_000,
   })
 
@@ -88,6 +96,50 @@ function DashboardPage() {
                 {statusQuery.data?.motd && (
                   <p className="mt-2 text-sm text-zinc-500 font-mono truncate">{statusQuery.data.motd}</p>
                 )}
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Panel vitals — official BoxToPlay REST API */}
+      <Card className="border-zinc-800 bg-zinc-900/40 backdrop-blur-xl shadow-xl shadow-black/20">
+        <CardHeader className="px-4 md:px-6 pb-4">
+          <div className="flex items-center gap-2">
+            <Server className="h-4 w-4 text-orange-400" />
+            <CardTitle className="text-base font-display">Panel Vitals</CardTitle>
+          </div>
+          <CardDescription className="text-zinc-600">Authoritative panel state from the BoxToPlay API · refresh every 60s</CardDescription>
+        </CardHeader>
+        <CardContent className="px-4 md:px-6 pb-6">
+          {vitalsQuery.isPending ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {[1, 2, 3, 4].map((i) => (
+                <div key={i} className="skeleton h-16 w-full rounded-lg" />
+              ))}
+            </div>
+          ) : vitalsQuery.isError ? (
+            <p className="text-sm text-rose-400">Unable to reach the BoxToPlay API. Check BTP_API_KEY.</p>
+          ) : (
+            <div className="space-y-3">
+              <div className="flex items-center gap-3 flex-wrap">
+                <Badge variant={getRuntimeTone(vitalsQuery.data.runtimeStatus)}>{vitalsQuery.data.runtimeStatus}</Badge>
+                <span className="text-sm text-zinc-400">
+                  Trial <span className="text-zinc-200 font-medium">{formatExpiry(vitalsQuery.data.expiresAt)}</span>
+                </span>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {[
+                  { label: 'Panel server', value: vitalsQuery.data.displayId ? `#${vitalsQuery.data.displayId}` : '—' },
+                  { label: 'Connection', value: vitalsQuery.data.connectionAddress ?? '—' },
+                  { label: 'Installed modpack', value: vitalsQuery.data.installedModpack ?? '—' },
+                  { label: 'Expires at', value: vitalsQuery.data.expiresAt ? new Date(vitalsQuery.data.expiresAt).toLocaleString() : '—' },
+                ].map(({ label, value }) => (
+                  <div key={label} className="rounded-lg bg-zinc-950/50 border border-zinc-800/60 px-4 py-3">
+                    <p className="text-[10px] uppercase tracking-widest text-zinc-600 font-mono mb-1">{label}</p>
+                    <p className="text-sm text-zinc-200 truncate font-mono">{value}</p>
+                  </div>
+                ))}
               </div>
             </div>
           )}
