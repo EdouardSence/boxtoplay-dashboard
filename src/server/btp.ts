@@ -46,7 +46,11 @@ export interface ServerVitals {
   modpackProvider: string | null
 }
 
-const btpFetch = async <T>(path: string, params?: Record<string, string>): Promise<T> => {
+export const btpFetch = async <T>(
+  path: string,
+  params?: Record<string, string>,
+  timeoutMs: number = REQUEST_TIMEOUT_MS,
+): Promise<T> => {
   const key = (process.env.BTP_API_KEY ?? '').trim()
 
   if (!key) {
@@ -59,7 +63,7 @@ const btpFetch = async <T>(path: string, params?: Record<string, string>): Promi
   }
 
   const controller = new AbortController()
-  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
+  const timeout = setTimeout(() => controller.abort(), timeoutMs)
 
   let response: Response
   try {

@@ -6,7 +6,7 @@ import { Boxes, Search, ChevronLeft, ChevronRight, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
-import { getModpackCategories, searchModpacks, triggerModpackSwitch, getModpackVersions } from '@/server/modpacks'
+import { searchModpacks, triggerModpackSwitch } from '@/server/modpacks'
 
 export const Route = createFileRoute('/modpacks')({
   component: ModpacksPage,
@@ -18,13 +18,7 @@ function ModpacksPage() {
   const [currentPage, setCurrentPage] = React.useState(0)
   const [selectedModpackId, setSelectedModpackId] = React.useState<string | null>(null)
   const [selectedModpackName, setSelectedModpackName] = React.useState<string | null>(null)
-  const [selectedVersionId, setSelectedVersionId] = React.useState<string | null>(null)
   const [toastMessage, setToastMessage] = React.useState<string | null>(null)
-
-  const categoriesQuery = useQuery({
-    queryKey: ['modpacks-categories'],
-    queryFn: () => getModpackCategories(),
-  })
 
   // Keep search term debounced
   React.useEffect(() => {
@@ -42,13 +36,7 @@ function ModpacksPage() {
     setCurrentPage(0)
     setSelectedModpackId(null)
     setSelectedModpackName(null)
-    setSelectedVersionId(null)
   }, [debouncedSearchTerm])
-
-  // Reset version when modpack changes
-  React.useEffect(() => {
-    setSelectedVersionId(null)
-  }, [selectedModpackId])
 
   // Auto-clear toast
   React.useEffect(() => {
@@ -65,39 +53,29 @@ function ModpacksPage() {
       }),
   })
 
-  const versionsQuery = useQuery({
-    queryKey: ['modpack-versions', selectedModpackId],
-    queryFn: () => getModpackVersions({ data: { packId: selectedModpackId! } }),
-    enabled: !!selectedModpackId,
-    staleTime: 5 * 60_000,
-  })
-
   const installMutation = useMutation({
     mutationFn: async () => {
-      if (!selectedModpackId || !selectedModpackName || !selectedVersionId) return
+      if (!selectedModpackId || !selectedModpackName) return
 
+      // A catalog entry IS an installable version: its id is what gets sent.
       await triggerModpackSwitch({
         data: {
           modpackName: selectedModpackName,
-          modpackVersionId: selectedVersionId,
+          modpackVersionId: selectedModpackId,
         },
       })
     },
     onSuccess: () => {
-      if (selectedModpackName && selectedVersionId) {
-        const versionName = versionsQuery.data?.find((v) => v.id === selectedVersionId)?.versionName ?? selectedVersionId
-        setToastMessage(`Workflow dispatché pour ${selectedModpackName} v${versionName}.`)
+      if (selectedModpackName) {
+        setToastMessage(`Workflow dispatché pour ${selectedModpackName}.`)
       }
     },
   })
 
-  const canDispatchWorkflow = !!selectedModpackId && !!selectedVersionId && !installMutation.isPending
+  const canDispatchWorkflow = !!selectedModpackId && !installMutation.isPending
   const searchResults = searchQuery.data?.modpacks ?? []
-  const totalResults = searchQuery.data?.totalCount ?? 0
-  const pageSize = searchQuery.data?.pageSize ?? 20
-  const totalPages = totalResults > 0 ? Math.ceil(totalResults / pageSize) : 0
   const canGoToPreviousPage = currentPage > 0
-  const canGoToNextPage = totalPages > 0 && currentPage + 1 < totalPages
+  const canGoToNextPage = Boolean(searchQuery.data?.hasNextPage)
 
   const onSelectModpack = (id: string, name: string) => {
     setSelectedModpackId(id)
@@ -143,8 +121,7 @@ function ModpacksPage() {
                   {debouncedSearchTerm.trim() ? 'Results' : 'All Modpacks'}
                 </CardTitle>
                 <CardDescription className="text-zinc-600">
-                  {totalResults} modpack{totalResults !== 1 ? 's' : ''} · Page {currentPage + 1}
-                  {totalPages > 0 ? `/${totalPages}` : ''}
+                  Page {currentPage + 1} · {searchResults.length} version{searchResults.length !== 1 ? 's' : ''} installable{searchResults.length !== 1 ? 's' : ''}
                 </CardDescription>
               </div>
                 <div className="flex items-center gap-2">
@@ -216,20 +193,12 @@ function ModpacksPage() {
                         `}
                       >
                         <CardContent className="flex items-center gap-3 p-4">
-                          {modpack.logo ? (
-                            <img 
-                              src={modpack.logo} 
-                              alt={`${modpack.name} logo`} 
-                              className="h-12 w-12 rounded-lg object-cover ring-1 ring-white/10" 
-                            />
-                          ) : (
-                            <div className="h-12 w-12 rounded-lg bg-zinc-800 flex items-center justify-center">
-                              <Boxes className="h-6 w-6 text-zinc-600" />
-                            </div>
-                          )}
+                          <div className="h-12 w-12 rounded-lg bg-zinc-800 flex items-center justify-center shrink-0">
+                            <Boxes className="h-6 w-6 text-zinc-600" />
+                          </div>
                           <div className="min-w-0 flex-1">
                             <p className="text-sm font-medium text-zinc-100 truncate font-display">{modpack.name}</p>
-                            <p className="text-xs text-zinc-500 font-mono mt-0.5">ID: {modpack.id}</p>
+                            <p className="text-xs text-zinc-500 font-mono mt-0.5">{modpack.provider ?? 'boxtoplay'}</p>
                           </div>
                         </CardContent>
                       </Card>
@@ -255,43 +224,10 @@ function ModpacksPage() {
             </CardDescription>
           </CardHeader>
           <CardContent className="px-4 md:px-6 pb-6 space-y-4">
-            {/* Version picker */}
-            <div>
-              <p className="text-sm font-medium text-zinc-300 mb-2">Choisir une version</p>
-              {versionsQuery.isPending ? (
-                <div className="flex items-center gap-2 text-sm text-zinc-400">
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  Chargement des versions...
-                </div>
-              ) : versionsQuery.isError ? (
-                <p className="text-sm text-rose-400">
-                  Impossible de charger les versions. Le catalog n'a peut-être pas encore
-                  été mis à jour avec les versions (déclencher catalog-update).
-                </p>
-              ) : (versionsQuery.data?.length ?? 0) === 0 ? (
-                <p className="text-sm text-zinc-500">Aucune version trouvée.</p>
-              ) : (
-                <div className="max-h-52 overflow-y-auto space-y-1 pr-1">
-                  {versionsQuery.data!.map((version) => (
-                    <button
-                      key={version.id}
-                      type="button"
-                      onClick={() => setSelectedVersionId(version.id)}
-                      className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-all duration-200 ${
-                        selectedVersionId === version.id
-                          ? 'bg-orange-500/15 border border-orange-500/40 text-orange-100'
-                          : 'bg-zinc-900/50 border border-zinc-800/60 text-zinc-400 hover:border-zinc-700 hover:bg-zinc-800/50 hover:text-zinc-200'
-                      }`}
-                    >
-                      <span className="font-medium">{version.versionName}</span>
-                      {version.minecraftVersion && (
-                        <span className="ml-2 text-xs text-zinc-500 font-mono">MC {version.minecraftVersion}</span>
-                      )}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
+            <p className="text-sm text-zinc-500">
+              Cette entrée est la version installée telle quelle. Le workflow
+              sauvegarde le monde actuel sur Drive avant de basculer.
+            </p>
 
             <Button
               disabled={!canDispatchWorkflow}
