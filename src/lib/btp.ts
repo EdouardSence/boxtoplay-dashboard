@@ -6,9 +6,9 @@ export interface BtpService {
 }
 
 /**
- * Le compte accumule les essais expires (7 au dernier releve). L'actif est
- * celui dont l'ID panel est configure, sinon celui qui expire le plus tard:
- * la rotation achete un nouvel essai a chaque passage.
+ * The account piles up expired trials (7 at the last count). The live one is
+ * whichever matches the configured panel id, else the latest expiry: the
+ * rotation buys a fresh trial on every pass.
  */
 export function pickActiveService(services: BtpService[], displayId?: string): BtpService | null {
   if (services.length === 0) {
@@ -42,8 +42,8 @@ export function getRuntimeTone(runtimeStatus: string): VitalsTone {
 }
 
 /**
- * Un essai gratuit vit ~16h. Le compte a rebours est l'info qui manque au
- * dashboard: c'est l'expiration qui tue le serveur, pas un crash.
+ * A free trial lives ~16h. The countdown is what the dashboard was missing:
+ * expiry is what kills the server, not a crash.
  */
 export function formatExpiry(expiresAt: string | null, now: number = Date.now()): string {
   if (!expiresAt) {
@@ -55,7 +55,9 @@ export function formatExpiry(expiresAt: string | null, now: number = Date.now())
     return '—'
   }
 
-  const minutes = Math.round((target - now) / 60_000)
+  // ceil, not round: with 29s left there is still time, and a countdown that
+  // reads "expired" early causes a panic for nothing.
+  const minutes = Math.ceil((target - now) / 60_000)
   if (minutes <= 0) {
     return 'expired'
   }

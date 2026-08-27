@@ -59,6 +59,14 @@ describe('formatExpiry', () => {
     expect(formatExpiry('2026-08-27T12:45:00Z', now)).toBe('45m left')
   })
 
+  it('does not expire a trial that still has seconds left', () => {
+    expect(formatExpiry('2026-08-27T12:00:29Z', now)).toBe('1m left')
+  })
+
+  it('expires exactly at the deadline', () => {
+    expect(formatExpiry('2026-08-27T12:00:00Z', now)).toBe('expired')
+  })
+
   it('reports an elapsed trial as expired', () => {
     expect(formatExpiry('2026-08-27T04:23:50Z', now)).toBe('expired')
   })

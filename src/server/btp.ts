@@ -15,8 +15,8 @@ import { pickActiveService, type BtpService } from '@/lib/btp'
 
 const BTP_API_BASE = 'https://api.boxtoplay.com/v1'
 const REQUEST_TIMEOUT_MS = 15_000
-// Quota mesure: 120 requetes / 60s, avec un plafond de burst en plus.
-// Un TTL de 30s garde le dashboard tres loin de la limite.
+// Measured quota: 120 requests / 60s, plus a burst ceiling on top of it.
+// A 30s TTL keeps the dashboard nowhere near either limit.
 const VITALS_CACHE_TTL_MS = 30_000
 
 interface BtpEnvelope<T> {
@@ -76,7 +76,7 @@ const btpFetch = async <T>(path: string, params?: Record<string, string>): Promi
 
   const payload = (await response.json().catch(() => ({}))) as BtpEnvelope<T>
 
-  // L'API peut renvoyer une erreur applicative en HTTP 200 avec success:false.
+  // The API does return application errors as HTTP 200 with success:false.
   if (!response.ok || payload.success === false) {
     const detail = payload.error?.code ?? response.status
     throw new Error(`BoxToPlay API ${path} failed: ${detail}`)

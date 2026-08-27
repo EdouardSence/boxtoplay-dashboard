@@ -119,7 +119,7 @@ function DashboardPage() {
               ))}
             </div>
           ) : vitalsQuery.isError ? (
-            <p className="text-sm text-rose-400">Unable to reach the BoxToPlay API. Check BTP_API_KEY.</p>
+            <p className="text-sm text-rose-400">No panel vitals: the BoxToPlay API rejected the request, is unreachable, or the account has no Minecraft service. Check BTP_API_KEY.</p>
           ) : (
             <div className="space-y-3">
               <div className="flex items-center gap-3 flex-wrap">
