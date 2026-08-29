@@ -94,3 +94,24 @@ describe('collectApiKeys', () => {
     expect(collectApiKeys({})).toEqual([])
   })
 })
+
+describe('pickActiveService — pourquoi l\'id du Gist est indispensable', () => {
+  // Etat reel du 2026-08-29 22:00Z: #956437 sert des joueurs, #956446 a ete
+  // achete plus tard sans bascule et dort. Son expiration est PLUS TARDIVE.
+  const services = [
+    { id: 'a', display_id: 956437, expires_at: '2026-08-30T03:51:48Z' }, // vivant
+    { id: 'b', display_id: 956446, expires_at: '2026-08-30T06:16:44Z' }, // au repos
+  ]
+
+  it('se trompe sans id: la derniere expiration est l\'essai au repos', () => {
+    expect(pickActiveService(services)?.display_id).toBe(956446)
+  })
+
+  it('designe le bon serveur quand le Gist donne son id', () => {
+    expect(pickActiveService(services, '956437')?.display_id).toBe(956437)
+  })
+
+  it('retombe sur l\'heuristique si l\'id du Gist ne correspond a rien', () => {
+    expect(pickActiveService(services, '999999')?.display_id).toBe(956446)
+  })
+})

@@ -120,10 +120,11 @@ function StatusBanner({
         <div className="flex items-start gap-3 border-t border-edge-soft bg-ground/50 px-4 py-3 sm:px-6">
           <Lamp signal="warn" className="mt-1" />
           <p className="max-w-[80ch] text-xs text-ink-dim">
-            <span className="text-warn">Alias DNS incoherent.</span>{' '}
+            <span className="text-warn">Alias DNS incohérent.</span>{' '}
             <span className="readout">{ALIAS_HOST}</span> porte encore un enregistrement SRV vers
-            un serveur eteint : une connexion sur deux echoue. Donner{' '}
-            <span className="readout text-ink">{status.data.host}</span> en attendant.
+            un serveur éteint : une connexion sur deux échoue. Adresse directe pour l'instant,{' '}
+            <span className="readout text-ink">{status.data.host}</span> — elle change à chaque
+            rotation, donc à redonner après chaque bascule.
           </p>
         </div>
       )}

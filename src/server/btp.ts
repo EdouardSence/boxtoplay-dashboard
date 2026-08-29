@@ -1,6 +1,9 @@
 import { createServerFn } from '@tanstack/react-start'
 
+import { promises as dns } from 'node:dns'
+
 import { collectApiKeys, pickActiveService, type BtpService } from '@/lib/btp'
+import { liveServerId, loadGistState } from '@/server/gist'
 
 // =============================================================================
 // Official BoxToPlay REST API — https://api.boxtoplay.com/docs
@@ -14,6 +17,8 @@ import { collectApiKeys, pickActiveService, type BtpService } from '@/lib/btp'
 // =============================================================================
 
 const BTP_API_BASE = 'https://api.boxtoplay.com/v1'
+const IPV4 = /^\d{1,3}(\.\d{1,3}){3}$/
+const PTR_TIMEOUT_MS = 2_000
 const REQUEST_TIMEOUT_MS = 15_000
 // Measured quota: 120 requests / 60s, plus a burst ceiling on top of it.
 // A 30s TTL keeps the dashboard nowhere near either limit.
@@ -105,6 +110,34 @@ export const btpFetch = async <T>(
   return (payload.data ?? {}) as T
 }
 
+/**
+ * `connection_address` remonte tantot `mc301.boxtoplay.com:27452`, tantot une
+ * IP nue `144.76.61.111:27452`. Une IP ne veut rien dire pour un joueur et
+ * change a chaque rotation; le PTR rend le nom que le panel affiche. C'est la
+ * meme deduction que fait le worker pour trouver l'hote FTP.
+ */
+async function resolveHostname(address: string | null): Promise<string | null> {
+  if (!address) return null
+
+  const [host, port] = address.split(':')
+  if (!IPV4.test(host)) return address
+
+  try {
+    const names = await Promise.race([
+      dns.reverse(host),
+      new Promise<string[]>((_, reject) =>
+        setTimeout(() => reject(new Error('PTR timeout')), PTR_TIMEOUT_MS),
+      ),
+    ])
+    const name = names[0]
+    if (!name) return address
+    return port ? `${name}:${port}` : name
+  } catch {
+    // Pas de PTR: l'IP reste utilisable, elle est juste moins parlante.
+    return address
+  }
+}
+
 let vitalsCache: { data: ServerVitals; expiresAt: number } | null = null
 
 export const getServerVitals = createServerFn({ method: 'GET' }).handler(async (): Promise<ServerVitals> => {
@@ -133,7 +166,23 @@ export const getServerVitals = createServerFn({ method: 'GET' }).handler(async (
     }
   }
 
-  const wanted = (process.env.BOXTOPLAY_SERVER_ID ?? '').trim()
+  // Le Gist fait foi sur le serveur qui sert: worker.py l'y ecrit a chaque
+  // bascule et s'en sert lui-meme pour savoir qui tient `orny`. Sans lui,
+  // pickActiveService retombe sur "expiration la plus tardive", qui designe
+  // l'essai le PLUS RECENT -- donc celui du compte cible des qu'un essai a ete
+  // achete sans bascule, ce qui est justement l'etat entre deux rotations.
+  // Symptome observe le 2026-08-29: l'ecran montrait #956446 `stopped` et le
+  // declarait hors ligne, alors que #956437 servait des joueurs.
+  let wanted = ''
+  try {
+    wanted = liveServerId(await loadGistState())
+  } catch (error) {
+    console.warn('Gist illisible, repli sur BOXTOPLAY_SERVER_ID:', error)
+  }
+  if (!wanted) {
+    wanted = (process.env.BOXTOPLAY_SERVER_ID ?? '').trim()
+  }
+
   const active = pickActiveService(services, wanted)
 
   if (!active) {
@@ -171,7 +220,7 @@ export const getServerVitals = createServerFn({ method: 'GET' }).handler(async (
     serverId: active.id,
     displayId: typeof detail.display_id === 'number' ? detail.display_id : null,
     runtimeStatus: status.runtime_status ?? 'unknown',
-    connectionAddress: detail.connection_address ?? null,
+    connectionAddress: await resolveHostname(detail.connection_address ?? null),
     expiresAt: detail.expires_at ?? null,
     installedModpack: detail.installed_modpack?.name ?? null,
     modpackProvider: detail.installed_modpack?.provider ?? null,
