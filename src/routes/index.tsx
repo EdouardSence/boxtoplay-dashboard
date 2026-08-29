@@ -17,7 +17,7 @@ export const Route = createFileRoute('/')({
   component: DashboardPage,
 })
 
-const HOST = 'orny.boxtoplay.com'
+const ALIAS_HOST = 'orny.boxtoplay.com'
 
 function DashboardPage() {
   const status = useQuery({
@@ -90,7 +90,9 @@ function StatusBanner({
             <p className="text-2xl font-semibold tracking-tight text-ink sm:text-[28px]">
               {status.isPending ? 'Lecture…' : online ? 'En ligne' : 'Hors ligne'}
             </p>
-            <p className="readout mt-1 text-sm text-ink-dim">{HOST}</p>
+            <p className="readout mt-1 text-sm text-ink-dim">
+              {status.data?.host ?? ALIAS_HOST}
+            </p>
           </div>
         </div>
 
@@ -110,6 +112,18 @@ function StatusBanner({
           />
         </div>
       </div>
+
+      {status.data?.aliasOnline === false && (
+        <div className="flex items-start gap-3 border-t border-edge-soft bg-ground/50 px-4 py-3 sm:px-6">
+          <Lamp signal="warn" className="mt-1" />
+          <p className="max-w-[80ch] text-xs text-ink-dim">
+            <span className="text-warn">Alias DNS incoherent.</span>{' '}
+            <span className="readout">{ALIAS_HOST}</span> porte encore un enregistrement SRV vers
+            un serveur eteint : une connexion sur deux echoue. Donner{' '}
+            <span className="readout text-ink">{status.data.host}</span> en attendant.
+          </p>
+        </div>
+      )}
 
       <div className="grid grid-cols-2 gap-px border-t border-edge-soft bg-edge-soft sm:grid-cols-4">
         <Cell label="Serveur" value={vitals.data?.displayId ? `#${vitals.data.displayId}` : '—'} />
