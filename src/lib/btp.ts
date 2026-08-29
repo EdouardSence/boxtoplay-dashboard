@@ -1,3 +1,20 @@
+/**
+ * One API key per BoxToPlay account. The rotation alternates the live server
+ * between two accounts, and a key only ever sees its own account's servers --
+ * so a single key shows the wrong (expired) server half the time.
+ */
+export function collectApiKeys(env: Record<string, string | undefined>): string[] {
+  const raw = [env.BTP_API_KEY_0, env.BTP_API_KEY_1, env.BTP_API_KEY]
+  const keys: string[] = []
+  for (const value of raw) {
+    const key = (value ?? '').trim()
+    if (key && !keys.includes(key)) {
+      keys.push(key)
+    }
+  }
+  return keys
+}
+
 export interface BtpService {
   id: string
   display_id?: number

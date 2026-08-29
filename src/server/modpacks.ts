@@ -1,320 +1,117 @@
 import { createServerFn } from '@tanstack/react-start'
 
-// =============================================================================
-// Types
-// =============================================================================
-
-interface CatalogModpack {
-  id: string | number
-  name: string
-  logo?: string | null
-}
-
-interface CatalogCategory {
-  id: string | number
-  name: string
-  iconUrl?: string | null
-  count?: number
-}
-
-interface ModpackCatalog {
-  updated_at: string
-  server_id: string
-  pages_scraped: number
-  total: number
-  categories: CatalogCategory[]
-  modpacks: CatalogModpack[]
-}
-
-interface BoxToPlayModpackVersionApi {
-  id: string | number
-  version_name: string
-  minecraft_version?: string | null
-}
-
-interface BoxToPlayModpackVersionsResponse {
-  versions?: BoxToPlayModpackVersionApi[]
-  data?: BoxToPlayModpackVersionApi[]
-}
+import { btpFetch } from '@/server/btp'
+import { cursorForPage, rememberCursor, type CursorTrail } from '@/lib/modpacks'
 
 // =============================================================================
-// Public types (exported to routes)
+// Modpack catalog — official BoxToPlay REST API
+//
+// This used to read modpacks_catalog.json / modpacks_versions.json from the
+// Gist, published by the worker's panel scrape. The API serves the same
+// catalog directly, authenticated, so the scrape is no longer in the path.
+//
+// One model change comes with it: the API's catalog entries ARE installable
+// versions ("Star Technology 1.20.1 THETA 1 HOTFIX 3"), so there is no
+// pack -> versions second step any more. The id a card carries is the id the
+// switch workflow installs.
 // =============================================================================
+
+const MAX_QUERY_LENGTH = 80
+const MAX_MODPACK_NAME_LENGTH = 120
+const SAFE_ID_PATTERN = /^[A-Za-z0-9._:-]+$/
+const MODPACK_SEARCH_PAGE_SIZE = 24
+const REQUEST_TIMEOUT_MS = 30_000
 
 export interface ModpackSummary {
   id: string
   name: string
-  logo: string | null
+  provider: string | null
 }
 
 export interface ModpackSearchResult {
   modpacks: ModpackSummary[]
-  totalCount: number
   pageId: number
   pageSize: number
+  hasNextPage: boolean
 }
 
-export interface ModpackCategory {
-  id: string
-  name: string
-  icon: string | null
-  count: number
-}
-
-export interface ModpackVersion {
-  id: string
-  versionName: string
-  minecraftVersion: string | null
-}
-
-// =============================================================================
-// Constants
-// =============================================================================
-
-const CATALOG_CACHE_TTL_MS = 5 * 60 * 1000 // 5 minutes
-const MODPACK_SEARCH_PAGE_SIZE = 20
-const MAX_QUERY_LENGTH = 80
-const MAX_MODPACK_NAME_LENGTH = 120
-const SAFE_ID_PATTERN = /^[A-Za-z0-9._:-]+$/
-const REQUEST_TIMEOUT_MS = 30_000
-
-// =============================================================================
-// Helpers
-// =============================================================================
-
-const logModpacks = (level: 'info' | 'warn' | 'error', message: string, details?: Record<string, unknown>) => {
-  const payload = details ? { message, ...details } : { message }
-
-  if (level === 'error') {
-    console.error('[modpacks]', payload)
-    return
-  }
-
-  if (level === 'warn') {
-    console.warn('[modpacks]', payload)
-    return
-  }
-
-  console.info('[modpacks]', payload)
-}
-
-const fetchWithTimeout = (url: string, init?: RequestInit) => {
-  const controller = new AbortController()
-  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
-
-  return fetch(url, {
-    ...init,
-    signal: controller.signal,
-  }).finally(() => {
-    clearTimeout(timeout)
-  })
-}
-
-const toSafeImageUrl = (value: string | null | undefined): string | null => {
-  if (!value) {
-    return null
-  }
-
-  try {
-    const parsed = new URL(value, 'https://www.boxtoplay.com')
-
-    if (parsed.protocol !== 'https:') {
-      return null
-    }
-
-    return parsed.toString()
-  } catch {
-    return null
-  }
+interface BtpModpackCatalog {
+  items?: Array<{ id?: string; name?: string; provider?: string }>
+  next_cursor?: string | null
 }
 
 const isSafeText = (value: string) => !/[\x00-\x1F\x7F]/.test(value)
 
-// =============================================================================
-// Catalog cache (Gist-backed, refreshed every 5 minutes)
-// =============================================================================
+// The API paginates by opaque cursor, the UI by page number. Remembering the
+// cursor that opens each page is what bridges the two; a fresh search starts
+// its own trail.
+const cursorTrails = new Map<string, CursorTrail>()
 
-let catalogCache: { data: ModpackCatalog; expiresAt: number } | null = null
-
-const loadCatalogFromGist = async (): Promise<ModpackCatalog> => {
-  if (catalogCache && catalogCache.expiresAt > Date.now()) {
-    return catalogCache.data
+const trailFor = (query: string): CursorTrail => {
+  let trail = cursorTrails.get(query)
+  if (!trail) {
+    trail = { cursors: [undefined] }
+    cursorTrails.set(query, trail)
+    // Cheap bound: this map only ever holds the queries typed in one session.
+    if (cursorTrails.size > 50) {
+      const oldest = cursorTrails.keys().next().value
+      if (oldest !== undefined) cursorTrails.delete(oldest)
+    }
   }
-
-  const token = process.env.GH_TOKEN
-  const gistId = (process.env.GIST_ID ?? '').trim()
-
-  if (!token || !gistId) {
-    throw new Error('Missing Gist configuration (GH_TOKEN or GIST_ID)')
-  }
-
-  logModpacks('info', 'Loading modpack catalog from Gist...')
-
-  // Use raw URL to avoid Gist API truncation for large files
-  const rawUrl = `https://gist.githubusercontent.com/raw/${gistId}/modpacks_catalog.json`
-  logModpacks('info', 'Fetching catalog from raw URL', { url: rawUrl })
-
-  const response = await fetchWithTimeout(rawUrl, {
-    headers: {
-      accept: 'application/json',
-    },
-  })
-
-  logModpacks('info', 'Gist fetch completed', { status: response.status, statusText: response.statusText })
-
-  if (!response.ok) {
-    logModpacks('error', 'Failed to load Gist', {
-      status: response.status,
-      statusText: response.statusText,
-    })
-    throw new Error('Failed to load modpack catalog from Gist')
-  }
-
-  const rawText = await response.text()
-  logModpacks('info', 'Raw response size', { bytes: rawText.length })
-
-  logModpacks('info', 'Catalog JSON size', { bytes: rawText.length })
-
-  let catalog: ModpackCatalog
-  try {
-    catalog = JSON.parse(rawText) as ModpackCatalog
-  } catch (parseError) {
-    logModpacks('error', 'Catalog JSON parse failed', {
-      error: parseError instanceof Error ? parseError.message : String(parseError),
-      preview: rawText.slice(0, 200),
-    })
-    throw new Error('Failed to parse modpack catalog JSON')
-  }
-
-  logModpacks('info', 'Catalog parsed successfully', {
-    updatedAt: catalog.updated_at,
-    total: catalog.total,
-    categories: catalog.categories?.length ?? 0,
-  })
-
-  logModpacks('info', 'Catalog loaded from Gist', {
-    updatedAt: catalog.updated_at,
-    total: catalog.total,
-    categories: catalog.categories?.length ?? 0,
-  })
-
-  catalogCache = {
-    data: catalog,
-    expiresAt: Date.now() + CATALOG_CACHE_TTL_MS,
-  }
-
-  return catalog
+  return trail
 }
 
-// =============================================================================
-// Server Functions
-// =============================================================================
-
-export const getModpackCategories = createServerFn({ method: 'GET' }).handler(async (): Promise<ModpackCategory[]> => {
-  const catalog = await loadCatalogFromGist()
-  const categories = (catalog.categories ?? [])
-    .filter((cat) => cat.id != null && cat.name && isSafeText(cat.name))
-    .map((cat) => ({
-      id: String(cat.id),
-      name: cat.name,
-      icon: toSafeImageUrl(cat.iconUrl),
-      count: typeof cat.count === 'number' && Number.isFinite(cat.count) ? cat.count : 0,
-    }))
-
-  return categories
-})
+const fetchCatalogPage = (query: string, cursor?: string) =>
+  btpFetch<BtpModpackCatalog>(
+    '/services/minecraft/modpacks',
+    {
+      limit: String(MODPACK_SEARCH_PAGE_SIZE),
+      ...(query ? { query } : {}),
+      ...(cursor ? { cursor } : {}),
+    },
+    REQUEST_TIMEOUT_MS,
+  )
 
 export const searchModpacks = createServerFn({ method: 'GET' })
-  .inputValidator((data: unknown) => data as { query?: string; pageId?: number; categoryId?: string })
+  .inputValidator((data: unknown) => data as { query?: string; pageId?: number })
   .handler(async ({ data }): Promise<ModpackSearchResult> => {
-    const query = (data?.query ?? '').trim().toLowerCase()
+    const query = (data?.query ?? '').trim()
     const pageId = Number.isInteger(data?.pageId) && (data?.pageId ?? 0) >= 0 ? (data?.pageId ?? 0) : 0
 
     if (query.length > MAX_QUERY_LENGTH || !isSafeText(query)) {
       throw new Error('Invalid modpack search query')
     }
 
-    const catalog = await loadCatalogFromGist()
+    const trail = trailFor(query)
+    let page: BtpModpackCatalog = {}
 
-    const filtered = catalog.modpacks.filter((modpack) => {
-      if (!SAFE_ID_PATTERN.test(String(modpack.id))) return false
-      if (modpack.name.length > MAX_MODPACK_NAME_LENGTH || !isSafeText(modpack.name)) return false
-      if (query && !(modpack.name ?? '').toLowerCase().includes(query)) return false
-      return true
-    })
+    // Walk forward from the furthest page already visited: a cursor API has no
+    // random access, and jumping is only possible where we have been.
+    for (let index = cursorForPage(trail, pageId); index <= pageId; index += 1) {
+      page = await fetchCatalogPage(query, trail.cursors[index])
+      rememberCursor(trail, index + 1, page.next_cursor ?? null)
+      if (!page.next_cursor && index < pageId) {
+        // Asked for a page past the end.
+        return { modpacks: [], pageId, pageSize: MODPACK_SEARCH_PAGE_SIZE, hasNextPage: false }
+      }
+    }
 
-    // Paginate
-    const start = pageId * MODPACK_SEARCH_PAGE_SIZE
-    const page = filtered.slice(start, start + MODPACK_SEARCH_PAGE_SIZE)
-
-    const modpacks = page.map((modpack) => ({
-      id: String(modpack.id),
-      name: modpack.name,
-      logo: toSafeImageUrl(modpack.logo),
-    }))
+    const modpacks = (page.items ?? [])
+      .filter((item): item is { id: string; name: string; provider?: string } =>
+        Boolean(item.id && item.name) && SAFE_ID_PATTERN.test(item.id!) &&
+        item.name!.length <= MAX_MODPACK_NAME_LENGTH && isSafeText(item.name!))
+      .map((item) => ({
+        id: item.id,
+        name: item.name,
+        provider: item.provider ?? null,
+      }))
 
     return {
       modpacks,
-      totalCount: filtered.length,
       pageId,
       pageSize: MODPACK_SEARCH_PAGE_SIZE,
+      hasNextPage: Boolean(page.next_cursor),
     }
-  })
-
-// =============================================================================
-// Versions cache (modpacks_versions.json Gist file, separate from catalog)
-// =============================================================================
-
-const VERSIONS_CACHE_TTL_MS = 60 * 60 * 1000 // 1 hour (versions change rarely)
-
-let versionsCache: { data: Record<string, ModpackVersion[]>; expiresAt: number } | null = null
-
-const loadVersionsFromGist = async (): Promise<Record<string, ModpackVersion[]>> => {
-  if (versionsCache && versionsCache.expiresAt > Date.now()) {
-    return versionsCache.data
-  }
-
-  const token = process.env.GH_TOKEN
-  const gistId = (process.env.GIST_ID ?? '').trim()
-  if (!token || !gistId) throw new Error('Missing Gist configuration')
-
-  const response = await fetchWithTimeout(`https://gist.githubusercontent.com/raw/${gistId}/modpacks_versions.json`, {
-    headers: { Authorization: `Bearer ${token}`, accept: 'application/json' },
-  })
-
-  if (!response.ok) throw new Error(`Failed to load versions from Gist: ${response.status}`)
-
-  const raw = (await response.json()) as {
-    updated_at?: string
-    versions: Record<string, Array<{ id: string; version_name: string; minecraft_version?: string | null }>>
-  }
-
-  const data: Record<string, ModpackVersion[]> = {}
-  for (const [packId, versions] of Object.entries(raw.versions ?? {})) {
-    data[packId] = versions
-      .filter((v) => v.id && v.version_name)
-      .map((v) => ({
-        id: v.id,
-        versionName: v.version_name,
-        minecraftVersion: v.minecraft_version ?? null,
-      }))
-  }
-
-  versionsCache = { data, expiresAt: Date.now() + VERSIONS_CACHE_TTL_MS }
-  logModpacks('info', 'Versions loaded from Gist', { packCount: Object.keys(data).length })
-  return data
-}
-
-export const getModpackVersions = createServerFn({ method: 'GET' })
-  .inputValidator((data: unknown) => data as { packId?: string })
-  .handler(async ({ data }): Promise<ModpackVersion[]> => {
-    const packId = (data?.packId ?? '').trim()
-    if (!packId || !SAFE_ID_PATTERN.test(packId)) {
-      throw new Error('Invalid pack ID')
-    }
-
-    const allVersions = await loadVersionsFromGist()
-    return allVersions[packId] ?? []
   })
 
 export const triggerModpackSwitch = createServerFn({ method: 'POST' })
@@ -344,20 +141,31 @@ export const triggerModpackSwitch = createServerFn({ method: 'POST' })
       throw new Error('Invalid modpack version id')
     }
 
-    const response = await fetchWithTimeout(`https://api.github.com/repos/${owner}/${repo}/actions/workflows/change_modpack.yml/dispatches`, {
-      method: 'POST',
-      headers: {
-        authorization: `Bearer ${token}`,
-        accept: 'application/vnd.github.v3+json',
-      },
-      body: JSON.stringify({
-        ref: 'main',
-        inputs: {
-          modpack_name: modpackName,
-          modpack_id: modpackVersionId,
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
+
+    let response: Response
+    try {
+      response = await fetch(`https://api.github.com/repos/${owner}/${repo}/actions/workflows/change_modpack.yml/dispatches`, {
+        method: 'POST',
+        headers: {
+          authorization: `Bearer ${token}`,
+          accept: 'application/vnd.github.v3+json',
         },
-      }),
-    })
+        body: JSON.stringify({
+          ref: 'main',
+          inputs: {
+            modpack_name: modpackName,
+            // An API id (btp_...) makes change_modpack.py install over REST and
+            // write state.modpack_api_id; a panel id keeps the old path.
+            modpack_id: modpackVersionId,
+          },
+        }),
+        signal: controller.signal,
+      })
+    } finally {
+      clearTimeout(timeout)
+    }
 
     if (!response.ok) {
       throw new Error('Failed to trigger modpack switch workflow')

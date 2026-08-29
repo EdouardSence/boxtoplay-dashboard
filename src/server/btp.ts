@@ -1,6 +1,6 @@
 import { createServerFn } from '@tanstack/react-start'
 
-import { pickActiveService, type BtpService } from '@/lib/btp'
+import { collectApiKeys, pickActiveService, type BtpService } from '@/lib/btp'
 
 // =============================================================================
 // Official BoxToPlay REST API — https://api.boxtoplay.com/docs
@@ -46,8 +46,13 @@ export interface ServerVitals {
   modpackProvider: string | null
 }
 
-const btpFetch = async <T>(path: string, params?: Record<string, string>): Promise<T> => {
-  const key = (process.env.BTP_API_KEY ?? '').trim()
+export const btpFetch = async <T>(
+  path: string,
+  params?: Record<string, string>,
+  timeoutMs: number = REQUEST_TIMEOUT_MS,
+  apiKey?: string,
+): Promise<T> => {
+  const key = apiKey ?? collectApiKeys(process.env)[0]
 
   if (!key) {
     throw new Error('Missing BTP_API_KEY (https://www.boxtoplay.com/profile/api-keys)')
@@ -59,7 +64,7 @@ const btpFetch = async <T>(path: string, params?: Record<string, string>): Promi
   }
 
   const controller = new AbortController()
-  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
+  const timeout = setTimeout(() => controller.abort(), timeoutMs)
 
   let response: Response
   try {
@@ -92,17 +97,35 @@ export const getServerVitals = createServerFn({ method: 'GET' }).handler(async (
     return vitalsCache.data
   }
 
-  const list = await btpFetch<BtpServiceList>('/services/minecraft', { limit: '50' })
-  const wanted = (process.env.BOXTOPLAY_SERVER_ID ?? '').trim()
-  const active = pickActiveService(list.services ?? [], wanted)
+  const keys = collectApiKeys(process.env)
 
-  if (!active) {
-    throw new Error('No Minecraft service on this BoxToPlay account')
+  if (keys.length === 0) {
+    throw new Error('Missing BTP_API_KEY (https://www.boxtoplay.com/profile/api-keys)')
   }
 
+  // One key per account: the live server is on whichever account the rotation
+  // last landed on, so both are listed and the live one picked across them.
+  const owners = new Map<string, string>()
+  const services: BtpService[] = []
+  for (const key of keys) {
+    const list = await btpFetch<BtpServiceList>('/services/minecraft', { limit: '50' }, REQUEST_TIMEOUT_MS, key)
+    for (const service of list.services ?? []) {
+      owners.set(service.id, key)
+      services.push(service)
+    }
+  }
+
+  const wanted = (process.env.BOXTOPLAY_SERVER_ID ?? '').trim()
+  const active = pickActiveService(services, wanted)
+
+  if (!active) {
+    throw new Error('No Minecraft service on these BoxToPlay accounts')
+  }
+
+  const key = owners.get(active.id)
   const [detail, status] = await Promise.all([
-    btpFetch<BtpServiceDetail>(`/services/minecraft/${active.id}`),
-    btpFetch<{ runtime_status?: string }>(`/services/minecraft/${active.id}/status`),
+    btpFetch<BtpServiceDetail>(`/services/minecraft/${active.id}`, undefined, REQUEST_TIMEOUT_MS, key),
+    btpFetch<{ runtime_status?: string }>(`/services/minecraft/${active.id}/status`, undefined, REQUEST_TIMEOUT_MS, key),
   ])
 
   const vitals: ServerVitals = {

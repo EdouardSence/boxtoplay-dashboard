@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { formatExpiry, getRuntimeTone, pickActiveService, type BtpService } from './btp'
+import { collectApiKeys, formatExpiry, getRuntimeTone, pickActiveService, type BtpService } from './btp'
 
 const service = (id: string, display_id: number, expires_at: string): BtpService => ({
   id,
@@ -74,5 +74,23 @@ describe('formatExpiry', () => {
   it('handles a missing or invalid date', () => {
     expect(formatExpiry(null, now)).toBe('—')
     expect(formatExpiry('nope', now)).toBe('—')
+  })
+})
+
+describe('collectApiKeys', () => {
+  it('takes one key per account, in account order', () => {
+    expect(collectApiKeys({ BTP_API_KEY_0: 'a', BTP_API_KEY_1: 'b' })).toEqual(['a', 'b'])
+  })
+
+  it('still accepts the single-key form', () => {
+    expect(collectApiKeys({ BTP_API_KEY: 'solo' })).toEqual(['solo'])
+  })
+
+  it('drops blanks and duplicates', () => {
+    expect(collectApiKeys({ BTP_API_KEY_0: ' a ', BTP_API_KEY_1: '', BTP_API_KEY: 'a' })).toEqual(['a'])
+  })
+
+  it('returns nothing when unconfigured', () => {
+    expect(collectApiKeys({})).toEqual([])
   })
 })
