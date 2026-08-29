@@ -1,5 +1,7 @@
 import { createServerFn } from '@tanstack/react-start'
 
+import { getServerVitals } from '@/server/btp'
+
 // =============================================================================
 // Gist state types (only safe fields — no cookies, no FTP credentials)
 // =============================================================================
@@ -46,6 +48,10 @@ export interface MinecraftStatus {
   playersOnline: number
   playersMax: number
   motd: string
+  /** Adresse reellement sondee: celle que le panel donne, pas l'alias. */
+  host: string
+  /** L'alias public repond-il ? null si non sonde ou injoignable. */
+  aliasOnline: boolean | null
 }
 
 interface GitHubWorkflowRunApi {
@@ -70,25 +76,55 @@ export interface WorkflowRun {
   htmlUrl: string
 }
 
-export const getMinecraftStatus = createServerFn({ method: 'GET' }).handler(async (): Promise<MinecraftStatus> => {
-  const response = await fetch('https://api.mcsrvstat.us/3/orny.boxtoplay.com', {
-    headers: {
-      accept: 'application/json',
-    },
-  })
+// L'alias `orny` porte deux enregistrements SRV, dont un pointant sur un
+// serveur mort d'une rotation precedente. Le sonder seul fait clignoter le
+// dashboard entre En ligne et Hors ligne sans que rien ne bouge cote serveur.
+// On sonde donc l'adresse que le panel donne pour l'etat, et l'alias en plus
+// pour pouvoir dire qu'il est casse plutot que d'accuser le serveur.
+const ALIAS_HOST = 'orny.boxtoplay.com'
+const SAFE_HOST = /^[a-z0-9.-]+(:\d{1,5})?$/i
 
-  if (!response.ok) {
+async function probe(host: string): Promise<MinecraftStatusApiResponse | null> {
+  if (!SAFE_HOST.test(host)) return null
+
+  try {
+    const response = await fetch(`https://api.mcsrvstat.us/3/${host}`, {
+      headers: { accept: 'application/json' },
+    })
+    if (!response.ok) return null
+    return (await response.json()) as MinecraftStatusApiResponse
+  } catch {
+    return null
+  }
+}
+
+export const getMinecraftStatus = createServerFn({ method: 'GET' }).handler(async (): Promise<MinecraftStatus> => {
+  // Le panel fait foi sur l'adresse. S'il est injoignable on retombe sur
+  // l'alias, qui vaut mieux que rien meme quand il est a moitie casse.
+  const vitals = await getServerVitals().catch(() => null)
+  const host = vitals?.connectionAddress ?? ALIAS_HOST
+
+  const [direct, alias] = await Promise.all([
+    probe(host),
+    host === ALIAS_HOST ? Promise.resolve(null) : probe(ALIAS_HOST),
+  ])
+
+  if (!direct) {
     throw new Error('Failed to fetch Minecraft server status')
   }
 
-  const data = (await response.json()) as MinecraftStatusApiResponse
-  const motd = data.motd?.clean?.filter(Boolean).join(' ') || data.motd?.raw?.filter(Boolean).join(' ') || 'No MOTD available'
+  const motd =
+    direct.motd?.clean?.filter(Boolean).join(' ') ||
+    direct.motd?.raw?.filter(Boolean).join(' ') ||
+    'No MOTD available'
 
   return {
-    online: data.online,
-    playersOnline: data.players?.online ?? 0,
-    playersMax: data.players?.max ?? 0,
+    online: direct.online,
+    playersOnline: direct.players?.online ?? 0,
+    playersMax: direct.players?.max ?? 0,
     motd,
+    host,
+    aliasOnline: alias ? alias.online : null,
   }
 })
 

@@ -8,9 +8,9 @@ import { collectApiKeys, pickActiveService, type BtpService } from '@/lib/btp'
 // Authenticated with a per-account API key, not the BOXTOPLAY_SESSION cookie
 // the rest of this project juggles. Read-only here: server vitals only.
 //
-// The modpack catalog lives on the same API, but the switch flow cannot move
-// yet: the dashboard writes state.modpack_version_id, and worker.py feeds that
-// id to the panel installer. API ids (btp_...) would break the next rotation.
+// The modpack catalog lives on the same API too, but it is unusable for the
+// browser: one row per VERSION, pack and version names glued with no
+// separator, and no artwork. See server/catalog.ts.
 // =============================================================================
 
 const BTP_API_BASE = 'https://api.boxtoplay.com/v1'
