@@ -1,26 +1,11 @@
 import { createServerFn } from '@tanstack/react-start'
 
 import { getServerVitals } from '@/server/btp'
+import { loadGistState } from '@/server/gist'
 
 // =============================================================================
 // Gist state types (only safe fields — no cookies, no FTP credentials)
 // =============================================================================
-
-interface GistStateAccount {
-  email?: string
-  server_id?: string | number
-}
-
-interface GistStateRaw {
-  active_account_index?: number
-  current_server_id?: string | number
-  modpack_name?: string
-  modpack?: string
-  modpack_version_id?: string | number
-  modpack_api_id?: string
-  last_rotation_at?: string
-  accounts?: GistStateAccount[]
-}
 
 export interface RotationState {
   activeAccountEmail: string
@@ -167,32 +152,7 @@ export const getRecentWorkflows = createServerFn({ method: 'GET' }).handler(asyn
 })
 
 export const getGistState = createServerFn({ method: 'GET' }).handler(async (): Promise<RotationState> => {
-  const token = process.env.GH_TOKEN
-  const gistId = (process.env.GIST_ID ?? '').trim()
-
-  if (!token || !gistId) {
-    throw new Error('Missing Gist configuration (GH_TOKEN or GIST_ID)')
-  }
-
-  const response = await fetch(`https://api.github.com/gists/${gistId}`, {
-    headers: {
-      Authorization: `Bearer ${token}`,
-      accept: 'application/vnd.github+json',
-      'x-github-api-version': '2022-11-28',
-    },
-  })
-
-  if (!response.ok) {
-    throw new Error(`Failed to fetch Gist state: ${response.status}`)
-  }
-
-  const gist = (await response.json()) as { files: Record<string, { content: string }> }
-  const fileContent = gist.files['boxtoplay.json']?.content
-  if (!fileContent) {
-    throw new Error('boxtoplay.json not found in Gist')
-  }
-
-  const state = JSON.parse(fileContent) as GistStateRaw
+  const state = await loadGistState()
   const idx = state.active_account_index ?? 0
   const activeAccount = state.accounts?.[idx]
 
