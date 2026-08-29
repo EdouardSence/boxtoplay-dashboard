@@ -3,9 +3,12 @@ import { useQuery } from '@tanstack/react-query'
 
 import { Fault, Gauge, Lamp, PageHead, Panel, Readout, State, Well } from '@/components/ui/instrument'
 import {
+  formatOutlook,
   formatRemaining,
   formatWorkflowState,
   nextRotationAt,
+  outlookSignal,
+  rotationOutlook,
   trialFraction,
   trialSignal,
   workflowSignal,
@@ -55,7 +58,7 @@ function DashboardPage() {
 
       <div className="grid grid-cols-1 items-start gap-5 lg:grid-cols-2">
         <PanelVitals vitals={vitals} />
-        <RotationPanel rotation={rotation} />
+        <RotationPanel rotation={rotation} vitals={vitals} />
       </div>
 
       <RunLog runs={runs} />
@@ -216,10 +219,14 @@ function PanelVitals({
 
 function RotationPanel({
   rotation,
+  vitals,
 }: {
   rotation: ReturnType<typeof useQuery<Awaited<ReturnType<typeof getGistState>>>>
+  vitals: ReturnType<typeof useQuery<Awaited<ReturnType<typeof getServerVitals>>>>
 }) {
   const next = nextRotationAt()
+  const outlook = rotationOutlook(vitals.data?.expiresAt ?? null, next)
+  const fleet = vitals.data?.fleet ?? []
 
   return (
     <Panel title="Rotation" note="État du worker, lu dans le Gist">
@@ -262,11 +269,34 @@ function RotationPanel({
                     : '—'}
                 </span>
               </div>
+              <div className="mt-2 flex flex-wrap items-baseline justify-between gap-x-6 gap-y-1">
+                <span className="engraved">Ce que fera ce créneau</span>
+                <span className="flex items-center gap-2 text-sm text-ink">
+                  <Lamp signal={outlookSignal(outlook.verdict)} />
+                  {formatOutlook(outlook)}
+                </span>
+              </div>
               <p className="mt-3 max-w-[68ch] text-xs text-ink-label">
                 Le cron GitHub tire souvent en retard, jusqu'à quatre heures observées. Cette
-                heure est un plancher, pas une promesse.
+                heure est un plancher, pas une promesse — et un retard décale la prévision
+                ci-dessus dans le sens de la rotation.
               </p>
             </div>
+
+            {fleet.length > 0 && (
+              <div className="mt-4 border-t border-edge-soft pt-4">
+                <p className="engraved">Les deux comptes</p>
+                <div className="mt-3 space-y-2.5">
+                  {fleet.map((account) => (
+                    <AccountRow key={account.index} account={account} />
+                  ))}
+                </div>
+                <p className="mt-3 max-w-[68ch] text-xs text-ink-label">
+                  La relève n'est possible que si le compte cible porte un essai vivant, ou
+                  peut en racheter un. Deux comptes à sec, et le monde n'a plus où aller.
+                </p>
+              </div>
+            )}
           </>
         )}
       </div>
@@ -343,6 +373,27 @@ function RunLog({
         )}
       </div>
     </Panel>
+  )
+}
+
+/** Un compte, son essai, et lequel des deux sert en ce moment. */
+function AccountRow({
+  account,
+}: {
+  account: { index: number; displayId: number | null; expiresAt: string | null; isLive: boolean }
+}) {
+  return (
+    <div className="recess flex flex-wrap items-center gap-x-4 gap-y-1 rounded-[2px] px-3 py-2.5">
+      <Lamp signal={account.isLive ? 'live' : account.expiresAt ? 'idle' : 'fault'} />
+      <span className="readout text-[13px] text-ink">
+        compte {account.index}
+        {account.displayId !== null && <span className="text-ink-label"> · #{account.displayId}</span>}
+      </span>
+      {account.isLive && <span className="engraved text-live">en service</span>}
+      <span className="readout ml-auto text-xs text-ink-dim">
+        {account.expiresAt ? formatRemaining(account.expiresAt) : 'aucun essai vivant'}
+      </span>
+    </div>
   )
 }
 

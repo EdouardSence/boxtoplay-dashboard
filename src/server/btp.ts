@@ -36,6 +36,20 @@ interface BtpServiceDetail extends BtpService {
   installed_modpack?: { id?: string; name?: string; provider?: string } | null
 }
 
+/**
+ * Un compte, son essai vivant s'il en a un. La rotation alterne entre deux
+ * comptes: ne montrer que l'actif cache justement l'information qui dit si la
+ * releve est possible.
+ */
+export interface AccountTrial {
+  /** Rang de la cle, donc rang du compte dans le Gist. */
+  index: number
+  displayId: number | null
+  expiresAt: string | null
+  /** Ce compte porte-t-il le serveur qui sert en ce moment ? */
+  isLive: boolean
+}
+
 export interface ServerVitals {
   serverId: string
   displayId: number | null
@@ -44,6 +58,7 @@ export interface ServerVitals {
   expiresAt: string | null
   installedModpack: string | null
   modpackProvider: string | null
+  fleet: AccountTrial[]
 }
 
 export const btpFetch = async <T>(
@@ -107,9 +122,12 @@ export const getServerVitals = createServerFn({ method: 'GET' }).handler(async (
   // last landed on, so both are listed and the live one picked across them.
   const owners = new Map<string, string>()
   const services: BtpService[] = []
+  const byAccount: BtpService[][] = []
   for (const key of keys) {
     const list = await btpFetch<BtpServiceList>('/services/minecraft', { limit: '50' }, REQUEST_TIMEOUT_MS, key)
-    for (const service of list.services ?? []) {
+    const own = list.services ?? []
+    byAccount.push(own)
+    for (const service of own) {
       owners.set(service.id, key)
       services.push(service)
     }
@@ -128,6 +146,27 @@ export const getServerVitals = createServerFn({ method: 'GET' }).handler(async (
     btpFetch<{ runtime_status?: string }>(`/services/minecraft/${active.id}/status`, undefined, REQUEST_TIMEOUT_MS, key),
   ])
 
+  // Chaque compte traine ses essais morts: on ne retient que le vivant le plus
+  // tardif, celui que le worker verrait.
+  const now = Date.now()
+  const fleet: AccountTrial[] = byAccount.map((own, index) => {
+    const alive = own.filter((service) => {
+      const at = Date.parse(service.expires_at ?? '')
+      return !Number.isNaN(at) && at > now
+    })
+    const best = alive.reduce<BtpService | null>((latest, service) => {
+      if (!latest) return service
+      return Date.parse(service.expires_at ?? '') > Date.parse(latest.expires_at ?? '') ? service : latest
+    }, null)
+
+    return {
+      index,
+      displayId: typeof best?.display_id === 'number' ? best.display_id : null,
+      expiresAt: best?.expires_at ?? null,
+      isLive: best?.id === active.id,
+    }
+  })
+
   const vitals: ServerVitals = {
     serverId: active.id,
     displayId: typeof detail.display_id === 'number' ? detail.display_id : null,
@@ -136,6 +175,7 @@ export const getServerVitals = createServerFn({ method: 'GET' }).handler(async (
     expiresAt: detail.expires_at ?? null,
     installedModpack: detail.installed_modpack?.name ?? null,
     modpackProvider: detail.installed_modpack?.provider ?? null,
+    fleet,
   }
 
   vitalsCache = { data: vitals, expiresAt: Date.now() + VITALS_CACHE_TTL_MS }

@@ -123,3 +123,56 @@ export function formatRemaining(expiresAt: string | null, now: number = Date.now
   const hours = Math.floor(minutes / 60)
   return hours > 0 ? `${hours}h ${String(minutes % 60).padStart(2, '0')}m` : `${minutes}m`
 }
+
+/**
+ * Le worker refuse de tourner tant que le serveur actif tient encore plus de
+ * ROTATION_SKIP_ABOVE_HOURS heures (defaut 6, cf. worker.py). Predire ce que
+ * fera le prochain creneau evite d'aller lire les logs pour savoir si la nuit
+ * tient.
+ *
+ * `expired` est le cas qui compte: l'essai meurt AVANT que le worker ne se
+ * reveille, donc le serveur tombe sans que personne ne soit prevenu.
+ */
+export const ROTATION_SKIP_ABOVE_HOURS = 6
+
+export type RotationVerdict = 'rotate' | 'skip' | 'expired' | 'unknown'
+
+export interface RotationOutlook {
+  verdict: RotationVerdict
+  /** Heures de vie restantes AU MOMENT du creneau, negatif si deja mort. */
+  hoursAtSlot: number | null
+}
+
+export function rotationOutlook(
+  expiresAt: string | null,
+  slot: Date | null,
+  skipAboveHours: number = ROTATION_SKIP_ABOVE_HOURS,
+): RotationOutlook {
+  if (!expiresAt || !slot) return { verdict: 'unknown', hoursAtSlot: null }
+
+  const target = Date.parse(expiresAt)
+  if (Number.isNaN(target)) return { verdict: 'unknown', hoursAtSlot: null }
+
+  const hoursAtSlot = (target - slot.getTime()) / 3_600_000
+
+  if (hoursAtSlot <= 0) return { verdict: 'expired', hoursAtSlot }
+  if (skipAboveHours > 0 && hoursAtSlot > skipAboveHours) return { verdict: 'skip', hoursAtSlot }
+  return { verdict: 'rotate', hoursAtSlot }
+}
+
+export function outlookSignal(verdict: RotationVerdict): Signal {
+  if (verdict === 'expired') return 'fault'
+  if (verdict === 'rotate') return 'live'
+  if (verdict === 'skip') return 'idle'
+  return 'idle'
+}
+
+export function formatOutlook(outlook: RotationOutlook): string {
+  const { verdict, hoursAtSlot } = outlook
+  if (verdict === 'unknown' || hoursAtSlot === null) return 'indeterminee'
+
+  const h = Math.abs(hoursAtSlot).toFixed(1)
+  if (verdict === 'expired') return `l'essai meurt ${h} h avant le creneau`
+  if (verdict === 'skip') return `sautee — il restera ${h} h, au-dessus du seuil`
+  return `rotation — il restera ${h} h`
+}

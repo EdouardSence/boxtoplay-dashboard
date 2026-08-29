@@ -59,7 +59,8 @@ export function getRuntimeTone(runtimeStatus: string): VitalsTone {
 }
 
 /**
- * A free trial lives ~16h. The countdown is what the dashboard was missing:
+ * A free trial lives exactly 12h (measured 2026-08-28). The countdown is what
+ * the dashboard was missing:
  * expiry is what kills the server, not a crash.
  */
 export function formatExpiry(expiresAt: string | null, now: number = Date.now()): string {
