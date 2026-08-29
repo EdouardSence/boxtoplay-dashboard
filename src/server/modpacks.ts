@@ -1,76 +1,41 @@
 import { createServerFn } from '@tanstack/react-start'
 
-import { btpFetch } from '@/server/btp'
-import { cursorForPage, rememberCursor, type CursorTrail } from '@/lib/modpacks'
+import { filterModpacks, pageOf } from '@/lib/modpacks'
+import { loadCatalog, loadVersions, type CatalogModpack, type CatalogVersion } from '@/server/catalog'
 
 // =============================================================================
-// Modpack catalog — official BoxToPlay REST API
+// Catalogue modpacks
 //
-// This used to read modpacks_catalog.json / modpacks_versions.json from the
-// Gist, published by the worker's panel scrape. The API serves the same
-// catalog directly, authenticated, so the scrape is no longer in the path.
+// Une entree = un modpack, ses versions arrivent au clic. La source est
+// l'instantané publié dans le Gist (voir server/catalog.ts pour pourquoi ni
+// l'API REST ni le panel en direct ne conviennent).
 //
-// One model change comes with it: the API's catalog entries ARE installable
-// versions ("Star Technology 1.20.1 THETA 1 HOTFIX 3"), so there is no
-// pack -> versions second step any more. The id a card carries is the id the
-// switch workflow installs.
+// Les identifiants restent dans l'espace panel. change_modpack.py accepte les
+// deux espaces et nettoie l'autre champ du state en consequence, donc rien ici
+// n'a a connaitre les ids `btp_`.
 // =============================================================================
 
 const MAX_QUERY_LENGTH = 80
 const MAX_MODPACK_NAME_LENGTH = 120
-const SAFE_ID_PATTERN = /^[A-Za-z0-9._:-]+$/
-const MODPACK_SEARCH_PAGE_SIZE = 24
+const NUMERIC_ID = /^\d+$/
+const CONTROL_CHARS = /[\x00-\x1F\x7F]/
 const REQUEST_TIMEOUT_MS = 30_000
 
-export interface ModpackSummary {
-  id: string
-  name: string
-  provider: string | null
-}
+const PAGE_SIZE = 24
+
+export type ModpackSummary = CatalogModpack
+export type ModpackVersion = CatalogVersion
 
 export interface ModpackSearchResult {
   modpacks: ModpackSummary[]
   pageId: number
-  pageSize: number
   hasNextPage: boolean
+  total: number
+  /** Date de l'instantané: l'écran doit pouvoir dire de quand il parle. */
+  updatedAt: string | null
 }
 
-interface BtpModpackCatalog {
-  items?: Array<{ id?: string; name?: string; provider?: string }>
-  next_cursor?: string | null
-}
-
-const isSafeText = (value: string) => !/[\x00-\x1F\x7F]/.test(value)
-
-// The API paginates by opaque cursor, the UI by page number. Remembering the
-// cursor that opens each page is what bridges the two; a fresh search starts
-// its own trail.
-const cursorTrails = new Map<string, CursorTrail>()
-
-const trailFor = (query: string): CursorTrail => {
-  let trail = cursorTrails.get(query)
-  if (!trail) {
-    trail = { cursors: [undefined] }
-    cursorTrails.set(query, trail)
-    // Cheap bound: this map only ever holds the queries typed in one session.
-    if (cursorTrails.size > 50) {
-      const oldest = cursorTrails.keys().next().value
-      if (oldest !== undefined) cursorTrails.delete(oldest)
-    }
-  }
-  return trail
-}
-
-const fetchCatalogPage = (query: string, cursor?: string) =>
-  btpFetch<BtpModpackCatalog>(
-    '/services/minecraft/modpacks',
-    {
-      limit: String(MODPACK_SEARCH_PAGE_SIZE),
-      ...(query ? { query } : {}),
-      ...(cursor ? { cursor } : {}),
-    },
-    REQUEST_TIMEOUT_MS,
-  )
+const isSafeText = (value: string) => !CONTROL_CHARS.test(value)
 
 export const searchModpacks = createServerFn({ method: 'GET' })
   .inputValidator((data: unknown) => data as { query?: string; pageId?: number })
@@ -79,39 +44,39 @@ export const searchModpacks = createServerFn({ method: 'GET' })
     const pageId = Number.isInteger(data?.pageId) && (data?.pageId ?? 0) >= 0 ? (data?.pageId ?? 0) : 0
 
     if (query.length > MAX_QUERY_LENGTH || !isSafeText(query)) {
-      throw new Error('Invalid modpack search query')
+      throw new Error('Recherche de modpack invalide')
     }
 
-    const trail = trailFor(query)
-    let page: BtpModpackCatalog = {}
+    const catalog = await loadCatalog()
+    const page = pageOf(filterModpacks(catalog.modpacks, query), pageId, PAGE_SIZE)
 
-    // Walk forward from the furthest page already visited: a cursor API has no
-    // random access, and jumping is only possible where we have been.
-    for (let index = cursorForPage(trail, pageId); index <= pageId; index += 1) {
-      page = await fetchCatalogPage(query, trail.cursors[index])
-      rememberCursor(trail, index + 1, page.next_cursor ?? null)
-      if (!page.next_cursor && index < pageId) {
-        // Asked for a page past the end.
-        return { modpacks: [], pageId, pageSize: MODPACK_SEARCH_PAGE_SIZE, hasNextPage: false }
-      }
-    }
-
-    const modpacks = (page.items ?? [])
-      .filter((item): item is { id: string; name: string; provider?: string } =>
-        Boolean(item.id && item.name) && SAFE_ID_PATTERN.test(item.id!) &&
-        item.name!.length <= MAX_MODPACK_NAME_LENGTH && isSafeText(item.name!))
-      .map((item) => ({
-        id: item.id,
-        name: item.name,
-        provider: item.provider ?? null,
+    const modpacks = page.items
+      .filter((mod) => mod.name.length <= MAX_MODPACK_NAME_LENGTH && isSafeText(mod.name))
+      .map((mod) => ({
+        ...mod,
+        summary: mod.summary && isSafeText(mod.summary) ? mod.summary : null,
       }))
 
     return {
       modpacks,
-      pageId,
-      pageSize: MODPACK_SEARCH_PAGE_SIZE,
-      hasNextPage: Boolean(page.next_cursor),
+      pageId: page.pageId,
+      hasNextPage: page.hasNextPage,
+      total: page.total,
+      updatedAt: catalog.updatedAt,
     }
+  })
+
+export const getModpackVersions = createServerFn({ method: 'GET' })
+  .inputValidator((data: unknown) => data as { modpackId?: string })
+  .handler(async ({ data }): Promise<ModpackVersion[]> => {
+    const modpackId = (data?.modpackId ?? '').trim()
+
+    if (!NUMERIC_ID.test(modpackId)) {
+      throw new Error('Identifiant de modpack invalide')
+    }
+
+    const versions = await loadVersions()
+    return versions[modpackId] ?? []
   })
 
 export const triggerModpackSwitch = createServerFn({ method: 'POST' })
@@ -121,24 +86,24 @@ export const triggerModpackSwitch = createServerFn({ method: 'POST' })
     const repository = process.env.GITHUB_REPO
 
     if (!token || !repository) {
-      throw new Error('Missing GitHub configuration (GH_TOKEN or GITHUB_REPO)')
+      throw new Error('Configuration GitHub absente (GH_TOKEN ou GITHUB_REPO)')
     }
 
     const [owner, repo] = repository.split('/')
 
     if (!owner || !repo) {
-      throw new Error('GITHUB_REPO must be in the format owner/repo')
+      throw new Error('GITHUB_REPO doit avoir la forme owner/repo')
     }
 
     const modpackName = (data?.modpackName ?? '').trim()
     const modpackVersionId = (data?.modpackVersionId ?? '').trim()
 
     if (!modpackName || modpackName.length > MAX_MODPACK_NAME_LENGTH || !isSafeText(modpackName)) {
-      throw new Error('Invalid modpack name')
+      throw new Error('Nom de modpack invalide')
     }
 
-    if (modpackVersionId && !SAFE_ID_PATTERN.test(modpackVersionId)) {
-      throw new Error('Invalid modpack version id')
+    if (!NUMERIC_ID.test(modpackVersionId)) {
+      throw new Error('Identifiant de version invalide')
     }
 
     const controller = new AbortController()
@@ -146,28 +111,32 @@ export const triggerModpackSwitch = createServerFn({ method: 'POST' })
 
     let response: Response
     try {
-      response = await fetch(`https://api.github.com/repos/${owner}/${repo}/actions/workflows/change_modpack.yml/dispatches`, {
-        method: 'POST',
-        headers: {
-          authorization: `Bearer ${token}`,
-          accept: 'application/vnd.github.v3+json',
-        },
-        body: JSON.stringify({
-          ref: 'main',
-          inputs: {
-            modpack_name: modpackName,
-            // An API id (btp_...) makes change_modpack.py install over REST and
-            // write state.modpack_api_id; a panel id keeps the old path.
-            modpack_id: modpackVersionId,
+      response = await fetch(
+        `https://api.github.com/repos/${owner}/${repo}/actions/workflows/change_modpack.yml/dispatches`,
+        {
+          method: 'POST',
+          headers: {
+            authorization: `Bearer ${token}`,
+            accept: 'application/vnd.github.v3+json',
           },
-        }),
-        signal: controller.signal,
-      })
+          body: JSON.stringify({
+            ref: 'main',
+            inputs: {
+              modpack_name: modpackName,
+              // Id panel: change_modpack.py pose modpack_version_id et retire
+              // modpack_api_id, pour que la rotation suivante n'installe pas
+              // l'ancien pack par l'autre espace d'ids.
+              modpack_id: modpackVersionId,
+            },
+          }),
+          signal: controller.signal,
+        },
+      )
     } finally {
       clearTimeout(timeout)
     }
 
     if (!response.ok) {
-      throw new Error('Failed to trigger modpack switch workflow')
+      throw new Error('Le declenchement du workflow a echoue')
     }
   })

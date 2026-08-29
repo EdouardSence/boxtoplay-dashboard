@@ -14,12 +14,13 @@ export const Route = createRootRoute({
       { charSet: 'utf-8' },
       { name: 'viewport', content: 'width=device-width, initial-scale=1' },
       { title: 'BoxToPlay Control Center' },
+      { name: 'color-scheme', content: 'dark' },
     ],
     links: [
       { rel: 'stylesheet', href: appCss },
       { rel: 'preconnect', href: 'https://fonts.googleapis.com' },
       { rel: 'preconnect', href: 'https://fonts.gstatic.com', crossOrigin: 'anonymous' as const },
-      { rel: 'stylesheet', href: 'https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=DM+Sans:opsz,wght@9..40,300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap' },
+      { rel: 'stylesheet', href: 'https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap' },
     ],
   }),
   shellComponent: RootDocument,
@@ -42,8 +43,7 @@ function RootDocument({ children }: { children: React.ReactNode }) {
       <head>
         <HeadContent />
       </head>
-      <body className="min-h-screen bg-zinc-950 text-zinc-100 antialiased font-sans" suppressHydrationWarning>
-        <div className="noise" />
+      <body className="min-h-screen bg-ground text-ink antialiased font-sans" suppressHydrationWarning>
         <QueryClientProvider client={queryClient}>
           {children}
         </QueryClientProvider>
@@ -61,8 +61,8 @@ function RootLayout() {
   return (
     <div className="flex min-h-screen flex-col md:flex-row">
       <AppSidebar />
-      <main className="flex-1 p-4 md:p-6 lg:p-8 min-w-0">
-        <div className="max-w-7xl mx-auto animate-fade-in-up">
+      <main className="min-w-0 flex-1 p-4 md:p-6 lg:p-8">
+        <div className="mx-auto max-w-[1480px]">
           <Outlet />
         </div>
       </main>
@@ -72,9 +72,9 @@ function RootLayout() {
 
 function RootNotFound() {
   return (
-    <div className="rounded-xl border border-white/10 bg-zinc-900/60 backdrop-blur-sm p-6 md:p-8">
-      <h1 className="text-xl font-semibold text-zinc-100 font-display">Page introuvable</h1>
-      <p className="mt-2 text-sm text-zinc-400">La route demandée n'existe pas.</p>
+    <div className="panel p-6 md:p-8">
+      <h1 className="text-xl font-semibold text-ink">Page introuvable</h1>
+      <p className="mt-2 max-w-[68ch] text-sm text-ink-dim">Cette route n'existe pas.</p>
     </div>
   )
 }

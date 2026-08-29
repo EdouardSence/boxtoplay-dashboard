@@ -1,5 +1,39 @@
 @import "tailwindcss";
 
+/* ============================================================
+   WARM SLATE CONTROL ROOM
+   Voir DESIGN.md. Le fond est une ardoise chaude (teinte 62),
+   les lectures sont creusees dedans, les commandes posees
+   dessus. La lumiere vient d'en haut a gauche et ne bouge pas.
+   ============================================================ */
+
+@theme {
+  --font-sans: 'Archivo', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+
+  /* Neutres teintes chaud: jamais de gris pur, jamais #000/#fff */
+  --color-ground: oklch(0.145 0.010 62);
+  --color-panel: oklch(0.215 0.014 62);
+  --color-recess: oklch(0.165 0.011 62);
+  --color-raised: oklch(0.275 0.016 62);
+  --color-edge: oklch(0.35 0.017 62);
+  --color-edge-soft: oklch(0.30 0.015 62);
+  --color-ink: oklch(0.945 0.008 62);
+  --color-ink-dim: oklch(0.715 0.012 62);
+  --color-ink-label: oklch(0.585 0.014 62);
+
+  /* Signaux: nomment un etat, ne decorent jamais */
+  --color-live: oklch(0.74 0.15 152);
+  --color-warn: oklch(0.79 0.14 78);
+  --color-fault: oklch(0.64 0.19 27);
+  --color-idle: oklch(0.60 0.020 62);
+
+  --radius-panel: 3px;
+  --radius-control: 2px;
+
+  --ease-instrument: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
 * {
   box-sizing: border-box;
 }
@@ -10,131 +44,177 @@ html, body, #app {
 
 body {
   margin: 0;
-  background: #09090b;
-  color: #f1f5f9;
+  background: var(--color-ground);
+  color: var(--color-ink);
+  font-feature-settings: "tnum" 1;
 }
 
-/* ============================================
-   TYPOGRAPHY SYSTEM
-   ============================================ */
-@theme {
-  --font-display: 'Syne', system-ui, sans-serif;
-  --font-sans: 'DM Sans', system-ui, sans-serif;
-  --font-mono: 'JetBrains Mono', monospace;
+/* ============================================================
+   MATIERE
+   Deux profondeurs seulement. Pas de blur, pas de halo colore.
+   ============================================================ */
+
+.recess {
+  background: var(--color-recess);
+  box-shadow:
+    inset 0 1px 0 oklch(0 0 0 / 0.5),
+    inset 0 -1px 0 oklch(1 0 0 / 0.04);
 }
 
-/* ============================================
-   ANIMATIONS
-   ============================================ */
-
-@keyframes fadeInUp {
-  from { opacity: 0; transform: translateY(16px); }
-  to   { opacity: 1; transform: translateY(0); }
+.raise {
+  background: var(--color-raised);
+  box-shadow:
+    inset 0 1px 0 oklch(1 0 0 / 0.06),
+    0 1px 2px oklch(0 0 0 / 0.4);
 }
 
-.animate-fade-in-up {
-  animation: fadeInUp 0.4s ease-out forwards;
-  opacity: 0;
+/* Les panneaux s'aboutent le long de coutures plutot que de
+   flotter en cartes arrondies separees. */
+.panel {
+  background: var(--color-panel);
+  border: 1px solid var(--color-edge-soft);
+  border-radius: var(--radius-panel);
 }
 
-@keyframes shimmer {
-  0%   { background-position: -200% 0; }
-  100% { background-position:  200% 0; }
+/* ============================================================
+   GRAVURE
+   Etiquette de champ. Toujours ink-label, jamais plus clair.
+   ============================================================ */
+
+.engraved {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--color-ink-label);
+  line-height: 1;
 }
 
-.skeleton {
-  background: linear-gradient(
-    90deg,
-    rgba(255,255,255,0.03) 25%,
-    rgba(255,255,255,0.06) 50%,
-    rgba(255,255,255,0.03) 75%
-  );
-  background-size: 200% 100%;
-  animation: shimmer 1.5s infinite;
-  border-radius: 4px;
+/* ============================================================
+   LECTURES
+   Chiffres tabulaires: une valeur qui change ne doit pas
+   faire sauter la mise en page.
+   ============================================================ */
+
+.readout {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1, "zero" 1;
+  letter-spacing: -0.01em;
 }
 
-@keyframes statusPulse {
-  0%, 100% { transform: scale(1);    opacity: 1; }
-  50%       { transform: scale(1.2); opacity: 0.7; }
+/* ============================================================
+   MOUVEMENT
+   Deux seulement: arrivee, et changement de valeur.
+   ============================================================ */
+
+@keyframes instrument-arrive {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: none; }
 }
 
-.status-pulse {
-  animation: statusPulse 2.4s ease-in-out infinite;
+.arrive {
+  animation: instrument-arrive 240ms var(--ease-instrument) both;
 }
 
-@keyframes ping-slow {
-  0%        { transform: scale(1);    opacity: 0.7; }
-  80%, 100% { transform: scale(2.2); opacity: 0; }
+@keyframes value-settle {
+  from { opacity: 0.35; }
+  to   { opacity: 1; }
 }
 
-.ping-slow {
-  animation: ping-slow 2.4s cubic-bezier(0, 0, 0.2, 1) infinite;
+.settle {
+  animation: value-settle 120ms linear;
 }
 
-/* ============================================
-   GLOW UTILITIES
-   ============================================ */
-
-.glow-orange {
-  box-shadow: 0 0 24px rgba(249,115,22,0.25), 0 0 48px rgba(249,115,22,0.08);
+/* Le temoin vit: un indicateur fige se lit comme une capture. */
+@keyframes lamp-breathe {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.45; }
 }
 
-.glow-green {
-  box-shadow: 0 0 24px rgba(34,197,94,0.25), 0 0 48px rgba(34,197,94,0.08);
+.lamp-live {
+  animation: lamp-breathe 2.4s ease-in-out infinite;
 }
 
-.glow-red {
-  box-shadow: 0 0 24px rgba(239,68,68,0.2), 0 0 48px rgba(239,68,68,0.06);
+@media (prefers-reduced-motion: reduce) {
+  .arrive, .settle, .lamp-live {
+    animation: none;
+  }
 }
 
-.glow-emerald {
-  box-shadow: 0 0 12px rgba(16,185,129,0.4), 0 0 24px rgba(16,185,129,0.15);
+/* ============================================================
+   CHARGEMENT
+   Un creux qui respire, pas un balayage brillant.
+   ============================================================ */
+
+@keyframes well-breathe {
+  0%, 100% { opacity: 0.5; }
+  50%      { opacity: 0.85; }
 }
 
-.card-glow:hover {
-  box-shadow: 0 8px 32px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.05);
+.loading-well {
+  background: var(--color-recess);
+  box-shadow: inset 0 1px 0 oklch(0 0 0 / 0.5);
+  border-radius: var(--radius-control);
+  animation: well-breathe 1.8s ease-in-out infinite;
 }
 
-/* ============================================
-   MOBILE TABLE
-   ============================================ */
+@media (prefers-reduced-motion: reduce) {
+  .loading-well { animation: none; }
+}
+
+/* ============================================================
+   TABLEAU EN COLONNE SOUS 640px
+   ============================================================ */
 
 @media (max-width: 640px) {
-  .table-mobile-card { display: flex; flex-direction: column; gap: 12px; }
-  .table-mobile-card thead { display: none; }
-  .table-mobile-card tbody { display: flex; flex-direction: column; gap: 12px; }
-  .table-mobile-card tr {
+  .stack-rows thead { display: none; }
+  .stack-rows tbody { display: flex; flex-direction: column; }
+  .stack-rows tr {
     display: flex;
     flex-direction: column;
-    gap: 8px;
-    padding: 16px;
-    background: rgba(24,24,27,0.6);
-    border: 1px solid rgba(255,255,255,0.05);
-    border-radius: 10px;
+    gap: 6px;
+    padding: 12px 0;
+    border-bottom: 1px solid var(--color-edge-soft);
   }
-  .table-mobile-card td {
+  .stack-rows td {
     display: flex;
     justify-content: space-between;
-    align-items: center;
-    padding: 4px 0;
+    align-items: baseline;
+    gap: 16px;
+    padding: 0 !important;
     border: none !important;
   }
-  .table-mobile-card td::before {
+  .stack-rows td::before {
     content: attr(data-label);
-    font-size: 10px;
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
-    color: #52525b;
+    font-size: 11px;
     font-weight: 600;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+    color: var(--color-ink-label);
+    flex-shrink: 0;
   }
 }
 
-/* ============================================
-   SCROLLBAR
-   ============================================ */
+/* ============================================================
+   BARRE DE DEFILEMENT
+   ============================================================ */
 
-::-webkit-scrollbar { width: 5px; height: 5px; }
-::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: #27272a; border-radius: 3px; }
-::-webkit-scrollbar-thumb:hover { background: #3f3f46; }
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: var(--color-recess); }
+::-webkit-scrollbar-thumb {
+  background: var(--color-raised);
+  border: 2px solid var(--color-recess);
+  border-radius: 5px;
+}
+::-webkit-scrollbar-thumb:hover { background: var(--color-edge); }
+
+/* ============================================================
+   FOCUS
+   Visible sur ardoise sans halo colore.
+   ============================================================ */
+
+:focus-visible {
+  outline: 2px solid var(--color-ink-dim);
+  outline-offset: 2px;
+}
