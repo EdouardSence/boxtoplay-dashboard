@@ -243,9 +243,9 @@ export const getDriveStorageStats = createServerFn({ method: 'GET' }).handler(as
 
 export const deleteBackupFile = createServerFn({ method: 'POST' })
   .inputValidator(z.object({ fileId: z.string() }))
-  .handler(async ({ input }) => {
+  .handler(async ({ data }) => {
     const accessToken = await getValidAccessToken()
-    const response = await fetch(`https://www.googleapis.com/drive/v3/files/${input.fileId}`, {
+    const response = await fetch(`https://www.googleapis.com/drive/v3/files/${data.fileId}`, {
       method: 'DELETE',
       headers: { Authorization: `Bearer ${accessToken}` },
     })
@@ -269,7 +269,7 @@ export interface FileRevision {
 
 export const getFileRevisions = createServerFn({ method: 'GET' })
   .inputValidator(z.object({ fileId: z.string() }))
-  .handler(async ({ input }): Promise<FileRevision[]> => {
+  .handler(async ({ data }): Promise<FileRevision[]> => {
     try {
       const accessToken = await getValidAccessToken()
       const queryParams = new URLSearchParams({
@@ -277,7 +277,7 @@ export const getFileRevisions = createServerFn({ method: 'GET' })
       })
 
       const response = await fetch(
-        `https://www.googleapis.com/drive/v3/files/${input.fileId}/revisions?${queryParams.toString()}`,
+        `https://www.googleapis.com/drive/v3/files/${data.fileId}/revisions?${queryParams.toString()}`,
         {
           headers: { Authorization: `Bearer ${accessToken}` },
         }
@@ -289,8 +289,8 @@ export const getFileRevisions = createServerFn({ method: 'GET' })
         return []
       }
 
-      const data = (await response.json()) as { revisions: Array<{ id: string; modifiedTime: string; size: string; downloadUrl?: string }> }
-      return (data.revisions ?? []).map((r) => ({
+      const body = (await response.json()) as { revisions: Array<{ id: string; modifiedTime: string; size: string; downloadUrl?: string }> }
+      return (body.revisions ?? []).map((r) => ({
         id: r.id,
         modifiedTime: r.modifiedTime,
         size: r.size,
@@ -306,7 +306,7 @@ export const getFileRevisions = createServerFn({ method: 'GET' })
 
 export const restoreFullState = createServerFn({ method: 'POST' })
   .inputValidator(z.object({ fileId: z.string(), modpackName: z.string(), modpackVersionId: z.string().optional() }))
-  .handler(async ({ input }) => {
+  .handler(async ({ data }) => {
     const ghToken = process.env.GH_TOKEN
     if (!ghToken) {
       throw new Error('GH_TOKEN environment variable is not set')
@@ -334,9 +334,9 @@ export const restoreFullState = createServerFn({ method: 'POST' })
         body: JSON.stringify({
           ref: 'main',
           inputs: {
-            restore_file_id: input.fileId,
-            force_modpack: input.modpackName,
-            restore_pack_id: input.modpackVersionId || '',
+            restore_file_id: data.fileId,
+            force_modpack: data.modpackName,
+            restore_pack_id: data.modpackVersionId || '',
           },
         }),
       }

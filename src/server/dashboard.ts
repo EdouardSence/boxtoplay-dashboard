@@ -15,7 +15,8 @@ interface GistStateRaw {
   modpack_name?: string
   modpack?: string
   modpack_version_id?: string | number
-  catalog_last_updated?: string
+  modpack_api_id?: string
+  last_rotation_at?: string
   accounts?: GistStateAccount[]
 }
 
@@ -23,8 +24,9 @@ export interface RotationState {
   activeAccountEmail: string
   activeServerId: string
   modpackName: string
-  modpackVersionId: string
-  catalogLastUpdated: string | null
+  /** Id panel ou id API selon l'espace dans lequel le state a ete ecrit. */
+  modpackRef: string
+  lastRotationAt: string | null
 }
 
 interface MinecraftStatusApiResponse {
@@ -162,7 +164,10 @@ export const getGistState = createServerFn({ method: 'GET' }).handler(async (): 
     activeAccountEmail: activeAccount?.email ?? '—',
     activeServerId: String(state.current_server_id ?? activeAccount?.server_id ?? '—'),
     modpackName: state.modpack_name ?? state.modpack ?? '—',
-    modpackVersionId: String(state.modpack_version_id ?? '—'),
-    catalogLastUpdated: state.catalog_last_updated ?? null,
+    // Les deux espaces d'ids coexistent: change_modpack.py pose l'un et retire
+    // l'autre, donc afficher celui qui est renseigne evite de montrer un id
+    // que plus rien n'utilise.
+    modpackRef: String(state.modpack_api_id || state.modpack_version_id || '—'),
+    lastRotationAt: state.last_rotation_at ?? null,
   }
 })

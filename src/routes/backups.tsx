@@ -1,31 +1,8 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import {
-  Archive,
-  Download,
-  Loader2,
-  Trash2,
-  Search,
-  HardDrive,
-  RotateCcw,
-  Package,
-  DatabaseBackup,
-  History,
-  Clock,
-  FileArchive,
-  ChevronRight,
-} from 'lucide-react'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Badge } from '@/components/ui/badge'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMemo, useState } from 'react'
+import { Toaster, toast } from 'sonner'
+
 import {
   AlertDialog,
   AlertDialogAction,
@@ -36,45 +13,34 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
-import { getBackupsList, getFileRevisions, deleteBackupFile, restoreFullState } from '@/server/backups'
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Fault, PageHead, Panel, Readout, Well } from '@/components/ui/instrument'
+import { deleteBackupFile, getBackupsList, getFileRevisions, restoreFullState } from '@/server/backups'
 import type { BackupFile, FileRevision } from '@/server/backups'
-import { useState, useMemo } from 'react'
-import { toast } from 'sonner'
-import { Toaster } from 'sonner'
 
 export const Route = createFileRoute('/backups')({ component: BackupsPage })
 
+// La sauvegarde de rotation garde toujours le meme nom: le worker la reecrit a
+// chaque passe et Drive en versionne le contenu. Tout le reste est un point de
+// restauration fige.
+const ROTATION_FILE = 'minecraft_world_backup'
+
 function formatBytes(bytes: string | number): string {
-  const num = typeof bytes === 'string' ? parseInt(bytes, 10) : bytes
-  if (isNaN(num)) return '0 B'
-  const mb = num / (1024 * 1024)
-  const gb = mb / 1024
-  if (gb >= 1) return `${gb.toFixed(2)} Go`
-  return `${mb.toFixed(2)} Mo`
+  const value = typeof bytes === 'string' ? Number.parseInt(bytes, 10) : bytes
+  if (!Number.isFinite(value)) return '—'
+
+  const mb = value / (1024 * 1024)
+  return mb >= 1024 ? `${(mb / 1024).toFixed(2)} Go` : `${mb.toFixed(0)} Mo`
 }
 
-function formatDate(isoDate: string): string {
-  const date = new Date(isoDate)
-  const day = date.getDate()
-  const month = date.toLocaleDateString('fr-FR', { month: 'long' })
-  const year = date.getFullYear()
-  const time = date.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
-  return `${day} ${month} ${year} - ${time}`
-}
-
-function formatDateShort(isoDate: string): string {
-  const date = new Date(isoDate)
-  const day = date.getDate()
-  const month = date.toLocaleDateString('fr-FR', { month: 'short' })
-  const year = date.getFullYear()
-  return `${day} ${month} ${year}`
+function formatDate(iso: string): string {
+  return new Date(iso).toLocaleString('fr-FR', {
+    day: '2-digit',
+    month: '2-digit',
+    year: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
 }
 
 function BackupsPage() {
@@ -85,505 +51,356 @@ function BackupsPage() {
   const [versionTarget, setVersionTarget] = useState<BackupFile | null>(null)
   const [restoreVersionId, setRestoreVersionId] = useState('')
 
-  const backupsQuery = useQuery({
+  const backups = useQuery({
     queryKey: ['backups-list'],
     queryFn: () => getBackupsList(),
     staleTime: 0,
     refetchOnMount: true,
   })
 
-  const revisionsQuery = useQuery({
+  const revisions = useQuery({
     queryKey: ['file-revisions', versionTarget?.id],
-    queryFn: () => (versionTarget ? getFileRevisions({ fileId: versionTarget.id }) : Promise.resolve([])),
+    queryFn: () =>
+      versionTarget
+        ? getFileRevisions({ data: { fileId: versionTarget.id } })
+        : Promise.resolve([] as FileRevision[]),
     enabled: !!versionTarget,
   })
 
-  const deleteMutation = useMutation({
-    mutationFn: (fileId: string) => deleteBackupFile({ input: { fileId } }),
+  const remove = useMutation({
+    mutationFn: (fileId: string) => deleteBackupFile({ data: { fileId } }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['backups-list'] })
-      toast.success('Sauvegarde supprimée avec succès')
+      toast.success('Sauvegarde supprimée')
       setDeleteTarget(null)
     },
     onError: (error) => {
-      toast.error(`Erreur: ${error instanceof Error ? error.message : 'Suppression échouée'}`)
+      toast.error(error instanceof Error ? error.message : 'Suppression échouée')
     },
   })
 
-  const restoreMutation = useMutation({
-    mutationFn: ({ fileId, modpackName }: { fileId: string; modpackName: string }) =>
-      restoreFullState({ input: { fileId, modpackName } }),
+  const restore = useMutation({
+    mutationFn: (input: { fileId: string; modpackName: string; modpackVersionId?: string }) =>
+      restoreFullState({ data: input }),
     onSuccess: () => {
-      toast.success('Restauration lancée ! Le serveur va être reconfiguré dans quelques minutes.')
+      toast.success('Restauration lancée. Le serveur est reconfiguré dans les minutes qui viennent.')
       setRestoreTarget(null)
     },
     onError: (error) => {
-      toast.error(`Erreur: ${error instanceof Error ? error.message : 'Impossible de lancer la restauration'}`)
+      toast.error(error instanceof Error ? error.message : 'Restauration impossible')
     },
   })
 
-  // Separate backups into rotation active and time machine
-  const { rotationBackup, timeMachineBackups } = useMemo(() => {
-    const backups = backupsQuery.data ?? []
-    const rotation = backups.find((b) => b.name.toLowerCase().includes('minecraft_world_backup'))
-    const timeMachine = backups.filter(
-      (b) => b.isFinal && !b.name.toLowerCase().includes('minecraft_world_backup')
-    )
-    return { rotationBackup: rotation, timeMachineBackups: timeMachine }
-  }, [backupsQuery.data])
+  const { rotation, restorePoints } = useMemo(() => {
+    const all = backups.data ?? []
+    const isRotation = (file: BackupFile) => file.name.toLowerCase().includes(ROTATION_FILE)
 
-  // Calculate stats from backup files
+    return {
+      rotation: all.find(isRotation),
+      restorePoints: all.filter((file) => file.isFinal && !isRotation(file)),
+    }
+  }, [backups.data])
+
   const stats = useMemo(() => {
-    const backups = backupsQuery.data ?? []
-    const totalArchives = backups.length
-    const totalSize = backups.reduce((acc, b) => acc + parseInt(b.size, 10), 0)
-    const latestDate = backups.length > 0
-      ? backups.reduce((latest, b) => (new Date(b.createdTime) > new Date(latest) ? b.createdTime : latest), backups[0].createdTime)
-      : null
-    return { totalArchives, totalSize, latestDate }
-  }, [backupsQuery.data])
-
-  const filteredTimeMachine = useMemo(() => {
-    if (!search.trim()) return timeMachineBackups
-    const q = search.toLowerCase()
-    return timeMachineBackups.filter(
-      (b) =>
-        b.name.toLowerCase().includes(q) ||
-        b.associatedModpack.toLowerCase().includes(q) ||
-        formatDate(b.createdTime).toLowerCase().includes(q)
+    const all = backups.data ?? []
+    const bytes = all.reduce((sum, file) => sum + (Number.parseInt(file.size, 10) || 0), 0)
+    const latest = all.reduce<string | null>(
+      (newest, file) =>
+        !newest || new Date(file.createdTime) > new Date(newest) ? file.createdTime : newest,
+      null,
     )
-  }, [timeMachineBackups, search])
+
+    return { count: all.length, bytes, latest }
+  }, [backups.data])
+
+  const filtered = useMemo(() => {
+    const needle = search.trim().toLowerCase()
+    if (!needle) return restorePoints
+
+    return restorePoints.filter(
+      (file) =>
+        file.name.toLowerCase().includes(needle) ||
+        file.associatedModpack.toLowerCase().includes(needle),
+    )
+  }, [restorePoints, search])
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-5">
       <Toaster position="top-right" theme="dark" />
 
-      {/* Header */}
-      <div className="flex items-center gap-4">
-        <div className="p-3 rounded-xl bg-zinc-900/80 border border-zinc-800">
-          <DatabaseBackup className="h-6 w-6 text-orange-400" />
+      <PageHead
+        title="Sauvegardes"
+        note="Archives du monde sur Google Drive. Une sauvegarde continue réécrite à chaque rotation, et les points de restauration figés."
+      />
+
+      <Panel title="Stock">
+        <div className="grid grid-cols-1 gap-2.5 p-4 sm:grid-cols-3 sm:p-5">
+          <Readout label="Archives" value={backups.isPending ? '…' : String(stats.count)} />
+          <Readout label="Poids total" value={backups.isPending ? '…' : formatBytes(stats.bytes)} />
+          <Readout
+            label="Dernière écriture"
+            value={backups.isPending ? '…' : stats.latest ? formatDate(stats.latest) : '—'}
+          />
         </div>
-        <div>
-          <h1 className="text-2xl md:text-3xl font-bold text-zinc-100 font-display tracking-tight">Backups</h1>
-          <p className="text-sm text-zinc-400 mt-1">Gestion des sauvegardes Minecraft sur Google Drive</p>
-        </div>
-      </div>
+      </Panel>
 
-      {/* Stats Section - Calculated from backup files */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <Card className="border-zinc-800 bg-zinc-900/40 backdrop-blur-xl shadow-xl shadow-black/20">
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-zinc-400">Total des Archives</CardTitle>
-            <Archive className="h-4 w-4 text-zinc-500" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-orange-400 font-display">{stats.totalArchives}</div>
-            <div className="text-xs text-zinc-500 mt-1">fichiers de sauvegarde</div>
-          </CardContent>
-        </Card>
-
-        <Card className="border-zinc-800 bg-zinc-900/40 backdrop-blur-xl shadow-xl shadow-black/20">
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-zinc-400">Poids des Sauvegardes</CardTitle>
-            <HardDrive className="h-4 w-4 text-zinc-500" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-orange-400 font-mono">{formatBytes(stats.totalSize)}</div>
-            <div className="text-xs text-zinc-500 mt-1">espace utilisé par les backups</div>
-          </CardContent>
-        </Card>
-
-        <Card className="border-zinc-800 bg-zinc-900/40 backdrop-blur-xl shadow-xl shadow-black/20">
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-zinc-400">Dernière Activité</CardTitle>
-            <Clock className="h-4 w-4 text-zinc-500" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-orange-400 font-mono">
-              {stats.latestDate ? formatDateShort(stats.latestDate) : '—'}
+      {rotation && (
+        <Panel
+          title="Rotation continue"
+          note="Réécrite à chaque passe du worker. Drive en garde l'historique."
+        >
+          <div className="flex flex-col gap-4 p-4 sm:p-5 md:flex-row md:items-end md:justify-between">
+            <div className="min-w-0">
+              <p className="readout truncate text-[15px] text-ink">{rotation.name}</p>
+              <p className="readout mt-1.5 text-xs text-ink-dim">
+                {formatDate(rotation.createdTime)} · {formatBytes(rotation.size)}
+              </p>
             </div>
-            <div className="text-xs text-zinc-500 mt-1">dernière sauvegarde</div>
-          </CardContent>
-        </Card>
-      </div>
 
-      {/* SECTION A: Rotation Active - Hero Card */}
-      {rotationBackup && (
-        <section className="space-y-4">
-          <div className="flex items-center gap-2">
-            <div className="w-1 h-6 bg-amber-500 rounded-full" />
-            <h2 className="text-lg font-semibold text-zinc-100 font-display">Rotation Active</h2>
-            <Badge className="bg-amber-500/10 text-amber-400 border-amber-500/30">Sauvegarde Continue</Badge>
+            <div className="flex shrink-0 flex-wrap gap-2">
+              <Control onClick={() => setVersionTarget(rotation)}>Versions</Control>
+              {rotation.webContentLink && (
+                <ControlLink href={rotation.webContentLink}>Télécharger</ControlLink>
+              )}
+              <Control tone="fault" onClick={() => setDeleteTarget(rotation)}>
+                Supprimer
+              </Control>
+            </div>
           </div>
-
-          <Card className="relative overflow-hidden border-amber-500/30 bg-gradient-to-br from-zinc-900/80 to-zinc-950/80 backdrop-blur-xl shadow-xl shadow-amber-500/5">
-            {/* Glow effect */}
-            <div className="absolute inset-0 bg-gradient-to-r from-amber-500/5 via-transparent to-amber-500/5 pointer-events-none" />
-            
-            <CardContent className="p-6 md:p-8">
-              <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
-                <div className="flex items-start gap-5">
-                  <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/20">
-                    <FileArchive className="h-8 w-8 text-amber-400" />
-                  </div>
-                  <div>
-                    <h3 className="text-xl font-bold text-zinc-100 font-display">{rotationBackup.name}</h3>
-                    <div className="flex items-center gap-3 mt-2 text-sm text-zinc-400 font-mono">
-                      <span className="flex items-center gap-1">
-                        <Clock className="h-3.5 w-3.5" />
-                        {formatDate(rotationBackup.createdTime)}
-                      </span>
-                      <span className="text-zinc-600">•</span>
-                      <span>{formatBytes(rotationBackup.size)}</span>
-                    </div>
-                    <p className="text-xs text-zinc-500 mt-2 max-w-md">
-                      Cette sauvegarde est mise à jour automatiquement à chaque rotation. Elle utilise le versioning de Google Drive pour conserver l'historique.
-                    </p>
-                  </div>
-                </div>
-
-                <div className="flex flex-col sm:flex-row gap-3">
-                  <Button
-                    variant="outline"
-                    className="border-amber-500/30 text-amber-400 hover:bg-amber-500/10 hover:border-amber-500/50 transition-all duration-300"
-                    onClick={() => setVersionTarget(rotationBackup)}
-                  >
-                    <History className="h-4 w-4 mr-2" />
-                    Gérer les versions
-                  </Button>
-                  {rotationBackup.webContentLink && (
-                    <a
-                      href={rotationBackup.webContentLink}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex"
-                    >
-                      <Button
-                        variant="outline"
-                        className="border-white/10 text-zinc-300 hover:bg-zinc-800 hover:border-zinc-700 transition-all duration-300"
-                      >
-                        <Download className="h-4 w-4 mr-2" />
-                        Télécharger
-                      </Button>
-                    </a>
-                  )}
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-10 w-10 p-0 text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 transition-all duration-300"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent
-                      align="end"
-                      className="bg-zinc-900/95 backdrop-blur-xl border-zinc-800 text-zinc-100"
-                    >
-                      <DropdownMenuItem
-                        className="text-rose-400 focus:text-rose-400 focus:bg-rose-950/30 cursor-pointer transition-colors duration-300"
-                        onSelect={() => setDeleteTarget(rotationBackup)}
-                      >
-                        <Trash2 className="mr-2 h-4 w-4" />
-                        Supprimer
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </section>
+        </Panel>
       )}
 
-      {/* SECTION B: Time Machine - Grid of Modpacks */}
-      <section className="space-y-4">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="w-1 h-6 bg-emerald-500 rounded-full" />
-            <h2 className="text-lg font-semibold text-zinc-100 font-display">Points de Restauration</h2>
-            <Badge className="bg-emerald-500/10 text-emerald-400 border-emerald-500/30">Time Machine</Badge>
-          </div>
-          <div className="relative w-48">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-500" />
-            <Input
-              placeholder="Rechercher..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="pl-9 h-9 bg-zinc-950/50 border-zinc-800 text-zinc-100 placeholder:text-zinc-600 focus:border-zinc-700 focus:ring-0 transition-all duration-300 text-sm"
-            />
-          </div>
-        </div>
-
-        {backupsQuery.isPending && (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {[1, 2, 3].map((i) => (
-              <Card
-                key={i}
-                className="border-zinc-800 bg-zinc-900/40 backdrop-blur-xl shadow-xl shadow-black/20"
-              >
-                <CardContent className="p-5 space-y-4">
-                  <div className="skeleton h-6 w-3/4" />
-                  <div className="skeleton h-4 w-1/2" />
-                  <div className="skeleton h-10 w-full" />
-                </CardContent>
-              </Card>
+      <Panel
+        title="Points de restauration"
+        note="Un état complet: monde, modpack et configuration."
+        aside={
+          <input
+            type="search"
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder="Filtrer"
+            aria-label="Filtrer les points de restauration"
+            className="recess w-40 rounded-[2px] px-3 py-1.5 text-sm text-ink placeholder:text-ink-label focus:outline-none"
+          />
+        }
+      >
+        {backups.isPending ? (
+          <div className="space-y-2 p-4 sm:p-5">
+            {[0, 1, 2].map((i) => (
+              <Well key={i} className="h-14 w-full" />
             ))}
           </div>
-        )}
-
-        {backupsQuery.isError && (
-          <div className="flex flex-col items-center justify-center py-12 text-center rounded-xl bg-rose-950/10 border border-rose-500/20">
-            <Archive className="h-12 w-12 text-rose-500" />
-            <p className="mt-4 text-sm text-rose-400 font-medium">Erreur lors du chargement</p>
-            <p className="mt-1 text-xs text-zinc-500">Vérifiez votre connexion et réessayez</p>
+        ) : backups.isError ? (
+          <div className="p-4 sm:p-5">
+            <Fault>
+              Google Drive n'a pas répondu. Vérifier <span className="readout">RCLONE_CONFIG_GDRIVE</span>.
+            </Fault>
           </div>
-        )}
-
-        {!backupsQuery.isPending && !backupsQuery.isError && filteredTimeMachine.length === 0 && (
-          <div className="flex flex-col items-center justify-center py-16 text-center rounded-xl bg-zinc-900/20 border border-zinc-800/40">
-            <div className="p-4 rounded-full bg-zinc-800/50">
-              <Package className="h-8 w-8 text-zinc-600" />
-            </div>
-            <p className="mt-4 text-sm text-zinc-400 font-medium">Aucun point de restauration</p>
-            <p className="mt-1 text-xs text-zinc-500">Les sauvegardes finales apparaîtront ici</p>
-          </div>
-        )}
-
-        {!backupsQuery.isPending && !backupsQuery.isError && filteredTimeMachine.length > 0 && (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {filteredTimeMachine.map((backup: BackupFile, index: number) => (
-              <Card
+        ) : filtered.length === 0 ? (
+          <p className="px-4 py-10 text-center text-sm text-ink-dim sm:px-5">
+            {search.trim() ? 'Aucune archive ne correspond.' : 'Aucun point de restauration enregistré.'}
+          </p>
+        ) : (
+          <ul className="divide-y divide-edge-soft">
+            {filtered.map((backup, index) => (
+              <li
                 key={backup.id}
-                className="group relative overflow-hidden border-zinc-800/60 bg-zinc-900/40 backdrop-blur-xl shadow-xl shadow-black/20 hover:border-zinc-700 hover:shadow-[0_8px_32px_rgba(0,0,0,0.5)] transition-all duration-300"
-                style={{ animationDelay: `${index * 50}ms` }}
+                className="arrive flex flex-col gap-3 px-4 py-3.5 sm:flex-row sm:items-center sm:justify-between sm:px-5"
+                style={{ animationDelay: `${Math.min(index, 6) * 40}ms` }}
               >
-                {/* Top glow border */}
-                <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-orange-500/0 via-orange-500/40 to-orange-500/0 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
-                
-                <CardContent className="p-5 space-y-4">
-                  {/* Modpack Title */}
-                  <div>
-                    <h3 className="text-lg font-bold text-zinc-100 font-display truncate">
-                      {backup.associatedModpack || backup.name.replace('.zip', '')}
-                    </h3>
-                    <div className="flex items-center gap-2 mt-1 text-xs text-zinc-500 font-mono">
-                      <Clock className="h-3 w-3" />
-                      {formatDateShort(backup.createdTime)}
-                      <span className="text-zinc-600">•</span>
-                      <span>{formatBytes(backup.size)}</span>
-                    </div>
-                  </div>
+                <div className="min-w-0">
+                  <p className="truncate text-[15px] font-medium text-ink">
+                    {backup.associatedModpack || backup.name.replace(/\.zip$/, '')}
+                  </p>
+                  <p className="readout mt-1 text-xs text-ink-dim">
+                    {formatDate(backup.createdTime)} · {formatBytes(backup.size)}
+                  </p>
+                </div>
 
-                  {/* Actions */}
-                  <div className="flex items-center gap-2 pt-2">
-                    <Button
-                      className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white transition-all duration-300 text-sm"
-                      onClick={() => setRestoreTarget(backup)}
-                    >
-                      <RotateCcw className="h-4 w-4 mr-2" />
-                      Restaurer
-                    </Button>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-9 w-9 p-0 text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 transition-all duration-300"
-                        >
-                          <ChevronRight className="h-4 w-4" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent
-                        align="end"
-                        className="bg-zinc-900/95 backdrop-blur-xl border-zinc-800 text-zinc-100"
-                      >
-                        {backup.webContentLink && (
-                          <DropdownMenuItem asChild>
-                            <a
-                              href={backup.webContentLink}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="flex items-center cursor-pointer"
-                            >
-                              <Download className="mr-2 h-4 w-4" />
-                              Télécharger
-                            </a>
-                          </DropdownMenuItem>
-                        )}
-                        <DropdownMenuSeparator className="bg-zinc-800" />
-                        <DropdownMenuItem
-                          className="text-rose-400 focus:text-rose-400 focus:bg-rose-950/30 cursor-pointer transition-colors duration-300"
-                          onSelect={() => setDeleteTarget(backup)}
-                        >
-                          <Trash2 className="mr-2 h-4 w-4" />
-                          Supprimer
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </div>
-                </CardContent>
-              </Card>
+                <div className="flex shrink-0 flex-wrap gap-2">
+                  <Control
+                    onClick={() => {
+                      setRestoreVersionId('')
+                      setRestoreTarget(backup)
+                    }}
+                  >
+                    Restaurer
+                  </Control>
+                  {backup.webContentLink && (
+                    <ControlLink href={backup.webContentLink}>Télécharger</ControlLink>
+                  )}
+                  <Control tone="fault" onClick={() => setDeleteTarget(backup)}>
+                    Supprimer
+                  </Control>
+                </div>
+              </li>
             ))}
-          </div>
+          </ul>
         )}
-      </section>
+      </Panel>
 
-      {/* Version Management Dialog */}
+      {/* Historique Drive: une liste que seul un panneau dedie peut porter. */}
       <Dialog open={!!versionTarget} onOpenChange={(open) => !open && setVersionTarget(null)}>
-        <DialogContent className="bg-zinc-950/95 backdrop-blur-xl border-zinc-800 max-w-2xl">
+        <DialogContent className="panel max-w-2xl border-edge-soft bg-panel text-ink">
           <DialogHeader>
-            <DialogTitle className="text-zinc-100 font-display flex items-center gap-2">
-              <History className="h-5 w-5 text-amber-400" />
-              Historique des versions
-            </DialogTitle>
-            <DialogDescription className="text-zinc-400">
-              {versionTarget?.name} — Versions disponibles sur Google Drive
+            <DialogTitle className="text-base font-semibold text-ink">Historique des versions</DialogTitle>
+            <DialogDescription className="readout text-xs text-ink-dim">
+              {versionTarget?.name}
             </DialogDescription>
           </DialogHeader>
-          
-          <div className="mt-4 max-h-96 overflow-y-auto">
-            {revisionsQuery.isPending && (
-              <div className="flex items-center justify-center py-8">
-                <Loader2 className="h-6 w-6 text-zinc-500 animate-spin" />
-              </div>
+
+          <div className="mt-2 max-h-96 space-y-1.5 overflow-y-auto pr-1">
+            {revisions.isPending && [0, 1, 2].map((i) => <Well key={i} className="h-12 w-full" />)}
+
+            {revisions.isError && <Fault>Historique illisible.</Fault>}
+
+            {revisions.isSuccess && revisions.data.length === 0 && (
+              <p className="py-6 text-center text-sm text-ink-dim">Drive ne garde aucune version.</p>
             )}
-            
-            {revisionsQuery.isError && (
-              <div className="text-center py-8 text-rose-400 text-sm">
-                Erreur lors du chargement des versions
-              </div>
-            )}
-            
-            {revisionsQuery.isSuccess && revisionsQuery.data.length === 0 && (
-              <div className="text-center py-8 text-zinc-500 text-sm">
-                Aucune version trouvée
-              </div>
-            )}
-            
-            {revisionsQuery.isSuccess && revisionsQuery.data.length > 0 && (
-              <div className="space-y-2">
-                {revisionsQuery.data.map((revision: FileRevision, idx: number) => (
-                  <div
-                    key={revision.id}
-                    className="flex items-center justify-between p-3 rounded-lg bg-zinc-900/50 border border-zinc-800/60 hover:border-zinc-700 transition-colors"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-full bg-amber-500/10 flex items-center justify-center">
-                        <span className="text-xs font-mono text-amber-400">v{revisionsQuery.data.length - idx}</span>
-                      </div>
-                      <div>
-                        <div className="text-sm text-zinc-100 font-mono">
-                          {formatDate(revision.modifiedTime)}
-                        </div>
-                        <div className="text-xs text-zinc-500">
-                          {formatBytes(revision.size)}
-                        </div>
-                      </div>
-                    </div>
-                    {revision.downloadUrl ? (
-                      <a
-                        href={revision.downloadUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        title="Télécharger cette version"
-                      >
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800"
-                        >
-                          <Download className="h-4 w-4" />
-                        </Button>
-                      </a>
-                    ) : (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="text-zinc-400 opacity-30 cursor-not-allowed"
-                        disabled
-                        title="URL de téléchargement indisponible"
-                      >
-                        <Download className="h-4 w-4" />
-                      </Button>
-                    )}
+
+            {revisions.isSuccess &&
+              revisions.data.map((revision, index) => (
+                <div
+                  key={revision.id}
+                  className="recess flex items-center justify-between gap-4 rounded-[2px] px-3.5 py-3"
+                >
+                  <div className="flex min-w-0 items-baseline gap-3">
+                    <span className="readout shrink-0 text-xs text-ink-label">
+                      v{revisions.data.length - index}
+                    </span>
+                    <span className="readout truncate text-sm text-ink">
+                      {formatDate(revision.modifiedTime)}
+                    </span>
+                    <span className="readout shrink-0 text-xs text-ink-dim">
+                      {formatBytes(revision.size)}
+                    </span>
                   </div>
-                ))}
-              </div>
-            )}
+                  {revision.downloadUrl ? (
+                    <ControlLink href={revision.downloadUrl}>Télécharger</ControlLink>
+                  ) : (
+                    <span className="text-xs text-ink-label">Lien indisponible</span>
+                  )}
+                </div>
+              ))}
           </div>
         </DialogContent>
       </Dialog>
 
-      {/* Delete Confirmation Dialog */}
       <AlertDialog open={!!deleteTarget} onOpenChange={(open) => !open && setDeleteTarget(null)}>
-        <AlertDialogContent className="bg-zinc-950/95 backdrop-blur-xl border-zinc-800">
+        <AlertDialogContent className="panel border-edge-soft bg-panel text-ink">
           <AlertDialogHeader>
-            <AlertDialogTitle className="text-zinc-100 font-display">Supprimer cette sauvegarde ?</AlertDialogTitle>
-            <AlertDialogDescription className="text-zinc-400">
-              Es-tu sûr de vouloir supprimer définitivement cette sauvegarde ? Cette action est irréversible.
+            <AlertDialogTitle className="text-base font-semibold text-ink">
+              Supprimer cette sauvegarde ?
+            </AlertDialogTitle>
+            <AlertDialogDescription className="max-w-[68ch] text-sm text-ink-dim">
+              L'archive part définitivement de Google Drive, avec toutes ses versions. Rien ne la
+              récupère ensuite.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel className="bg-zinc-900 text-zinc-100 hover:bg-zinc-800 border-zinc-800 transition-all duration-300">
+            <AlertDialogCancel className="raise rounded-[2px] border-0 text-ink hover:bg-edge">
               Annuler
             </AlertDialogCancel>
             <AlertDialogAction
-              className="bg-rose-600 text-white hover:bg-rose-700 transition-all duration-300"
-              onClick={() => deleteTarget && deleteMutation.mutate(deleteTarget.id)}
-              disabled={deleteMutation.isPending}
+              className="raise rounded-[2px] text-fault hover:bg-edge"
+              onClick={() => deleteTarget && remove.mutate(deleteTarget.id)}
+              disabled={remove.isPending}
             >
-              {deleteMutation.isPending ? 'Suppression...' : 'Supprimer'}
+              {remove.isPending ? 'Suppression…' : 'Supprimer'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Restore Confirmation Dialog */}
       <AlertDialog open={!!restoreTarget} onOpenChange={(open) => !open && setRestoreTarget(null)}>
-        <AlertDialogContent className="bg-zinc-950/95 backdrop-blur-xl border-zinc-800">
+        <AlertDialogContent className="panel border-edge-soft bg-panel text-ink">
           <AlertDialogHeader>
-            <AlertDialogTitle className="text-zinc-100 font-display flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+            <AlertDialogTitle className="text-base font-semibold text-ink">
               Restaurer cet état complet ?
             </AlertDialogTitle>
-            <AlertDialogDescription className="text-zinc-400">
-              Attention : Cela va arrêter le serveur actuel, réinstaller le modpack{' '}
-              <span className="text-emerald-400 font-semibold">{restoreTarget?.associatedModpack}</span>{' '}
-              et écraser la map actuelle par celle-ci.
+            <AlertDialogDescription className="max-w-[68ch] text-sm text-ink-dim">
+              Le serveur s'arrête, réinstalle{' '}
+              <span className="text-ink">{restoreTarget?.associatedModpack || 'le modpack associé'}</span>{' '}
+              et écrase la map actuelle par celle de cette archive. La partie en cours est perdue.
             </AlertDialogDescription>
-            <div className="mt-4">
-              <label className="text-sm text-zinc-400">Version ID du modpack :</label>
-              <Input
-                value={restoreVersionId}
-                onChange={(e) => setRestoreVersionId(e.target.value)}
-                className="mt-2 bg-zinc-950/50 border-zinc-800 text-zinc-100 font-mono focus:border-orange-500/50 focus:ring-0 transition-all duration-300"
-                placeholder="ex: 20314"
-              />
-            </div>
           </AlertDialogHeader>
+
+          <div className="mt-1">
+            <label htmlFor="restore-version" className="engraved">
+              Id de version du modpack
+            </label>
+            <input
+              id="restore-version"
+              value={restoreVersionId}
+              onChange={(event) => setRestoreVersionId(event.target.value)}
+              placeholder="18334"
+              inputMode="numeric"
+              className="recess readout mt-2 w-full rounded-[2px] px-3.5 py-2.5 text-sm text-ink placeholder:text-ink-label focus:outline-none"
+            />
+            <p className="mt-2 max-w-[68ch] text-xs text-ink-label">
+              Laisser vide pour que le worker garde la version courante. L'id se lit sur la page
+              Modpacks, en ouvrant le pack voulu.
+            </p>
+          </div>
+
           <AlertDialogFooter>
-            <AlertDialogCancel className="bg-zinc-900 text-zinc-100 hover:bg-zinc-800 border-zinc-800 transition-all duration-300">
+            <AlertDialogCancel className="raise rounded-[2px] border-0 text-ink hover:bg-edge">
               Annuler
             </AlertDialogCancel>
             <AlertDialogAction
-              className="bg-emerald-600 text-white hover:bg-emerald-700 transition-all duration-300"
+              className="raise rounded-[2px] text-warn hover:bg-edge"
               onClick={() =>
                 restoreTarget &&
-                restoreMutation.mutate({
+                restore.mutate({
                   fileId: restoreTarget.id,
                   modpackName: restoreTarget.associatedModpack,
-                  modpackVersionId: restoreVersionId,
+                  modpackVersionId: restoreVersionId.trim() || undefined,
                 })
               }
-              disabled={restoreMutation.isPending}
+              disabled={restore.isPending}
             >
-              {restoreMutation.isPending ? 'Lancement...' : 'Confirmer la restauration'}
+              {restore.isPending ? 'Lancement…' : 'Confirmer la restauration'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
     </div>
+  )
+}
+
+// -----------------------------------------------------------------------------
+
+function Control({
+  children,
+  onClick,
+  tone,
+}: {
+  children: React.ReactNode
+  onClick: () => void
+  tone?: 'fault'
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`raise rounded-[2px] px-3 py-1.5 text-xs font-medium transition-colors duration-150 hover:bg-edge ${
+        tone === 'fault' ? 'text-fault' : 'text-ink'
+      }`}
+    >
+      {children}
+    </button>
+  )
+}
+
+function ControlLink({ children, href }: { children: React.ReactNode; href: string }) {
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="raise rounded-[2px] px-3 py-1.5 text-xs font-medium text-ink transition-colors duration-150 hover:bg-edge"
+    >
+      {children}
+    </a>
   )
 }
